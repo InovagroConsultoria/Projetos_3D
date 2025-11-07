@@ -183,6 +183,11 @@
             border-radius: 3px;
             font-size: 12px;
             white-space: nowrap;
+            transition: opacity 0.2s ease-in-out;
+        }
+        body.labels-hidden .label {
+            opacity: 0;
+            pointer-events: none;
         }
 
         .axis-label {
@@ -295,7 +300,9 @@
         import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
         // --- INÍCIO DA MODIFICAÇÃO: Lógica de Parâmetros da URL ---
-        
+        // --- NOVO: Distância para ocultar os rótulos ---
+        // (Ajuste este valor conforme necessário)
+        const labelVisibilityThreshold = 50;
         // 1. Pega os parâmetros da URL
         const params = new URLSearchParams(window.location.search);
         
@@ -337,6 +344,20 @@
 
         const raycaster = new THREE.Raycaster();
         const mouse = new THREE.Vector2();
+
+        function updateLabelVisibilityByZoom() {
+            if (!camera || !controls) return; // Garante que tudo foi inicializado
+
+            // Calcula a distância da câmera até o ponto de foco
+            const distance = camera.position.distanceTo(controls.target);
+
+            // Adiciona ou remove a classe do <body>
+            if (distance > labelVisibilityThreshold) {
+                document.body.classList.add('labels-hidden');
+            } else {
+                document.body.classList.remove('labels-hidden');
+            }
+        }
 
         function updateLabelVisibility() {
             const filterCheckboxes = document.querySelectorAll('#label-filter-container input[type="checkbox"]:not(#chk-filter-all)');
@@ -380,6 +401,7 @@
 
         init();
         animate();
+        
 
 // --- INÍCIO DA MODIFICAÇÃO: Carregamento Automático (Corrigido) ---
         if (glbFileURL && csvFileURL) {
@@ -922,10 +944,15 @@
 
         function animate() {
             requestAnimationFrame(animate);
+            updateLabelVisibilityByZoom(); // Chama a função de visibilidade
 
+            // Verifica se a animação 'flyToPoint' está rodando
             if (isAnimating) {
                 updateAnimation();
             } else {
+                // Se não estiver animando, atualiza os controles do mouse
+                
+                // Lógica de UI para não mover a câmera quando o mouse está sobre os painéis
                 const controlsPanel = document.getElementById('controls');
                 const infoBoxPanel = document.getElementById('info-box-container'); 
                 
@@ -950,6 +977,7 @@
                 }
             }
             
+            // Renderiza a cena (estas linhas devem ficar fora dos blocos 'if/else')
             renderer.render(scene, camera);
             labelRenderer.render(scene, camera); 
         }
@@ -961,6 +989,10 @@
 </body>
 
 </html>
+
+
+
+
 
 
 
