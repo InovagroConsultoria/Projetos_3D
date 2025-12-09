@@ -793,7 +793,13 @@
                 const z = rawN - originN;       
 
                 const pointGeo = new THREE.SphereGeometry(0.5, 16, 16); 
-                const pointMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+                let corDoPonto = 0xff0000; // Cor padrão (Vermelho)
+
+                if (pointID.toUpperCase().includes('DHP')) {
+                    corDoPonto = 0x0000ff; // Cor Azul para DHP
+                }
+
+                const pointMat = new THREE.MeshBasicMaterial({ color: corDoPonto });
                 const pointMesh = new THREE.Mesh(pointGeo, pointMat);
                 
                 pointMesh.userData.pointID = pointID.toUpperCase();
@@ -989,6 +995,7 @@
 </body>
 
 </html>
+
 
 
 
