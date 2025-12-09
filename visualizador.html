@@ -793,12 +793,19 @@
                 const z = rawN - originN;       
 
                 const pointGeo = new THREE.SphereGeometry(0.5, 16, 16); 
-                let corDoPonto = 0xff0000; // Cor padrão (Vermelho)
+               let corDoPonto = 0xff0000; // Cor padrão (Vermelho)
 
-                if (pointID.toUpperCase().includes('DHP')) {
-                    corDoPonto = 0x0000ff; // Cor Azul para DHP
+                // Transforma o ID em maiúsculas para facilitar a verificação
+                const idMaiusculo = pointID.toUpperCase();
+
+                if (idMaiusculo.includes('DHP')) {
+                    corDoPonto = 0x0000ff; // Azul para DHP
+                } 
+                else if (idMaiusculo.includes('ARR')) {
+                    corDoPonto = 0x00cc00; // Verde para ARR (Arrancamento)
                 }
 
+                // Cria o material usando a cor decidida acima
                 const pointMat = new THREE.MeshBasicMaterial({ color: corDoPonto });
                 const pointMesh = new THREE.Mesh(pointGeo, pointMat);
                 
@@ -995,6 +1002,7 @@
 </body>
 
 </html>
+
 
 
 
