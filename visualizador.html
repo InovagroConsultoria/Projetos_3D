@@ -283,7 +283,47 @@
         <span>Total de Furos na data 20/12/2025: <span id="point-count-display">...</span></span>
     </div>
     <img src="INOVAGROLOGO3.png" alt="Logo" id="footer-logo">
-<script type="importmap">
+    <img src="INOVAGROLOGO3.png" alt="Logo" id="footer-logo">
+
+    <div id="legenda-painel">
+        <h3>Legenda e Quantitativos</h3>
+        <div class="legenda-item">
+            <span class="bola" style="background-color: blue;"></span>
+            <span>DHP: <strong id="qtd-dhp">0</strong></span>
+        </div>
+        <div class="legenda-item">
+            <span class="bola" style="background-color: yellow;"></span>
+            <span>Arrancamento (ARR): <strong id="qtd-arr">0</strong></span>
+        </div>
+        <div class="legenda-item">
+            <span class="bola" style="background-color: red;"></span>
+            <span>Outros (Padrão): <strong id="qtd-outros">0</strong></span>
+        </div>
+        <div class="legenda-total">
+            <span>Total de Furos: <strong id="qtd-total">0</strong></span>
+        </div>
+    </div>
+
+    <style>
+        #legenda-painel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            font-family: Arial, sans-serif;
+            z-index: 999;
+            min-width: 200px;
+            border: 1px solid #444;
+        }
+        #legenda-painel h3 { margin-top: 0; font-size: 16px; border-bottom: 1px solid #666; padding-bottom: 5px; margin-bottom: 10px; }
+        .legenda-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 14px; }
+        .bola { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 10px; }
+        .legenda-total { margin-top: 10px; padding-top: 10px; border-top: 1px solid #666; font-size: 14px; }
+    </style>
+    <script type="importmap">
     {
         "imports": {
             "three": "https://cdn.jsdelivr.net/npm/three@0.164/build/three.module.js",
@@ -767,7 +807,12 @@
                     }
                 }
             }
-            
+            let contadorDHP = 0;
+            let contadorARR = 0;
+            let contadorOutros = 0;
+
+            lines.forEach(line => {
+                line = line.trim();
             lines.forEach(line => {
                 line = line.trim();
                 const parts = line.trim().split(',');
@@ -793,10 +838,26 @@
                 const z = rawN - originN;       
 
                 const pointGeo = new THREE.SphereGeometry(0.5, 16, 16); 
-               let corDoPonto = 0xff0000; // Cor padrão (Vermelho)
-
-                // Transforma o ID em maiúsculas para facilitar a verificação
+               // --- MODIFICAÇÃO: Cores e Contagem ---
+                let corDoPonto = 0xff0000; // Cor padrão (Vermelho)
                 const idMaiusculo = pointID.toUpperCase();
+
+                if (idMaiusculo.includes('DHP')) {
+                    corDoPonto = 0x0000ff; // Azul
+                    contadorDHP++;         // Conta +1 DHP
+                } 
+                else if (idMaiusculo.includes('ARR')) {
+                    corDoPonto = 0xffff00; // Amarelo
+                    contadorARR++;         // Conta +1 ARR
+                } 
+                else {
+                    corDoPonto = 0xff0000; // Vermelho
+                    contadorOutros++;      // Conta +1 Outros
+                }
+                // -------------------------------------
+
+                // Cria o material usando a cor decidida acima
+                const pointMat = new THREE.MeshBasicMaterial({ color: corDoPonto });
 
                 if (idMaiusculo.includes('DHP')) {
                     corDoPonto = 0x0000ff; // Azul para DHP
@@ -825,6 +886,13 @@
                 labelObject.userData.prefix = prefix; 
                 pointMesh.add(labelObject);
             });
+
+            // COLOQUE ISTO AQUI (Logo após o loop acabar)
+            document.getElementById('qtd-dhp').innerText = contadorDHP;
+            document.getElementById('qtd-arr').innerText = contadorARR;
+            document.getElementById('qtd-outros').innerText = contadorOutros;
+            document.getElementById('qtd-total').innerText = contadorDHP + contadorARR + contadorOutros;
+            // -------------------------------------------
 
             if (hasPoints) {
                 const allDiv = document.createElement('div');
@@ -1002,6 +1070,7 @@
 </body>
 
 </html>
+
 
 
 
