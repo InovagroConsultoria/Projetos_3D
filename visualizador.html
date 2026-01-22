@@ -740,7 +740,7 @@
             );
         }
 
-        function loadPoints(csvData, isReload = false, onFilterChange) {
+	function loadPoints(csvData, isReload = false, onFilterChange) {
             if (currentPointsGroup) {
                 scene.remove(currentPointsGroup);
                 currentPointsGroup = null;
@@ -748,13 +748,13 @@
 
             currentPointsGroup = new THREE.Group();
             scene.add(currentPointsGroup);
-
             const filterContainer = document.getElementById('label-filter-container');
             filterContainer.innerHTML = ''; 
             const prefixes = new Set();
             let hasPoints = false;
-
+            
             const lines = csvData.trim().split('\n').filter(line => line.trim() !== "");
+            
             try {
                 const lineCount = lines.length;
                 const countDisplayElement = document.getElementById('point-count-display');
@@ -764,6 +764,7 @@
             } catch (e) {
                 console.warn("Não foi possível atualizar a contagem de pontos.", e);
             }
+            
             if (lines.length === 0) {
                 console.warn("Arquivo CSV vazio ou inválido.");
                 return;
@@ -772,22 +773,21 @@
             let originE = parseFloat(document.getElementById('originE').value) || 0;
             let originElev = parseFloat(document.getElementById('originElev').value) || 0;
             let originN = parseFloat(document.getElementById('originN').value) || 0;
-
+            
             if (originE === 0 && originElev === 0 && originN === 0 && !isReload) {
                 const parts = lines[0].split(',');
                 if (parts.length >= 5) {
-                    originE = parseFloat(parts[1]);    // E
-                    originN = parseFloat(parts[2]);    // N
+                    originE = parseFloat(parts[1]); // E
+                    originN = parseFloat(parts[2]); // N
                     originElev = parseFloat(parts[3]); // Z (Elevação)
 
                     document.getElementById('originE').value = originE;
                     document.getElementById('originElev').value = originElev;
                     document.getElementById('originN').value = originN;
-                    console.log(`Origem definida automaticamente pelo primeiro ponto do CSV: E:${originE}, N:${originN}, Elev:${originElev}`);
-                
+                    console.log(`Origem definida: E:${originE}, N:${originN}, Elev:${originElev}`);
+                    
                     if (currentSurface) {
                         currentSurface.position.set(-originE, -originElev, -originN);
-                        
                         const box = new THREE.Box3().setFromObject(currentSurface);
                         const center = box.getCenter(new THREE.Vector3());
                         const size = box.getSize(new THREE.Vector3()).length();
@@ -803,27 +803,28 @@
                         originalSurfaceCenter.copy(center);
                         originalCameraPosition.copy(camera.position);
 
-                        controls.update(); 
+                        controls.update();
                     }
                 }
             }
+
+            // --- INÍCIO DA CORREÇÃO: Contadores Zerados ---
             let contadorDHP = 0;
             let contadorARR = 0;
             let contadorOutros = 0;
+            // ----------------------------------------------
 
-            lines.forEach(line => {
-                line = line.trim();
             lines.forEach(line => {
                 line = line.trim();
                 const parts = line.trim().split(',');
                 if (parts.length < 5) {
-                    console.warn('Linha CSV ignorada (formato incorreto):', line);
+                    console.warn('Linha CSV ignorada:', line);
                     return;
                 }
 
                 const pointID = parts[0];
                 const desc = parts[4];
-                
+               
                 const rawE = parseFloat(parts[1]);
                 const rawN = parseFloat(parts[2]);
                 const rawElev = parseFloat(parts[3]);
@@ -837,36 +838,26 @@
                 const y = rawElev - originElev; 
                 const z = rawN - originN;       
 
-                const pointGeo = new THREE.SphereGeometry(0.5, 16, 16); 
-               // --- MODIFICAÇÃO: Cores e Contagem ---
-                let corDoPonto = 0xff0000; // Cor padrão (Vermelho)
+                const pointGeo = new THREE.SphereGeometry(0.5, 16, 16);
+                
+                // --- LÓGICA DE COR E CONTAGEM CORRIGIDA ---
+                let corDoPonto = 0xff0000; // Padrão
                 const idMaiusculo = pointID.toUpperCase();
 
                 if (idMaiusculo.includes('DHP')) {
                     corDoPonto = 0x0000ff; // Azul
-                    contadorDHP++;         // Conta +1 DHP
+                    contadorDHP++;
                 } 
                 else if (idMaiusculo.includes('ARR')) {
                     corDoPonto = 0xffff00; // Amarelo
-                    contadorARR++;         // Conta +1 ARR
+                    contadorARR++;
                 } 
                 else {
                     corDoPonto = 0xff0000; // Vermelho
-                    contadorOutros++;      // Conta +1 Outros
+                    contadorOutros++;
                 }
-                // -------------------------------------
+                // -------------------------------------------
 
-                // Cria o material usando a cor decidida acima
-                const pointMat = new THREE.MeshBasicMaterial({ color: corDoPonto });
-
-                if (idMaiusculo.includes('DHP')) {
-                    corDoPonto = 0x0000ff; // Azul para DHP
-                } 
-                else if (idMaiusculo.includes('ARR')) {
-                    corDoPonto = 0xffff00; // Amarela para ARR (Arrancamento)
-                }
-
-                // Cria o material usando a cor decidida acima
                 const pointMat = new THREE.MeshBasicMaterial({ color: corDoPonto });
                 const pointMesh = new THREE.Mesh(pointGeo, pointMat);
                 
@@ -887,12 +878,12 @@
                 pointMesh.add(labelObject);
             });
 
-            // COLOQUE ISTO AQUI (Logo após o loop acabar)
+            // --- ATUALIZAÇÃO DO HTML DA LEGENDA ---
             document.getElementById('qtd-dhp').innerText = contadorDHP;
             document.getElementById('qtd-arr').innerText = contadorARR;
             document.getElementById('qtd-outros').innerText = contadorOutros;
             document.getElementById('qtd-total').innerText = contadorDHP + contadorARR + contadorOutros;
-            // -------------------------------------------
+            // --------------------------------------
 
             if (hasPoints) {
                 const allDiv = document.createElement('div');
@@ -901,7 +892,7 @@
                 allCheckbox.type = 'checkbox';
                 allCheckbox.id = 'chk-filter-all';
                 allCheckbox.value = 'all';
-                allCheckbox.checked = true; 
+                allCheckbox.checked = true;
                 allCheckbox.addEventListener('change', toggleAllFilters);
 
                 const allLabel = document.createElement('label');
@@ -1070,21 +1061,4 @@
 </body>
 
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
