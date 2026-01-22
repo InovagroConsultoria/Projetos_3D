@@ -284,8 +284,7 @@
     </div>
     <img src="INOVAGROLOGO3.png" alt="Logo" id="footer-logo">
     <img src="INOVAGROLOGO3.png" alt="Logo" id="footer-logo">
-
-    <div id="legenda-painel">
+	<div id="legenda-painel">
         <h3>Legenda e Quantitativos</h3>
         <div class="legenda-item">
             <span class="bola" style="background-color: blue;"></span>
@@ -294,6 +293,10 @@
         <div class="legenda-item">
             <span class="bola" style="background-color: yellow;"></span>
             <span>Arrancamento (ARR): <strong id="qtd-arr">0</strong></span>
+        </div>
+        <div class="legenda-item">
+            <span class="bola" style="background-color: orange;"></span>
+            <span>CRISTA: <strong id="qtd-crista">0</strong></span>
         </div>
         <div class="legenda-item">
             <span class="bola" style="background-color: red;"></span>
@@ -784,7 +787,6 @@
                     document.getElementById('originE').value = originE;
                     document.getElementById('originElev').value = originElev;
                     document.getElementById('originN').value = originN;
-                    console.log(`Origem definida: E:${originE}, N:${originN}, Elev:${originElev}`);
                     
                     if (currentSurface) {
                         currentSurface.position.set(-originE, -originElev, -originN);
@@ -808,17 +810,17 @@
                 }
             }
 
-            // --- INÍCIO DA CORREÇÃO: Contadores Zerados ---
+            // --- INICIALIZAÇÃO DOS CONTADORES ---
             let contadorDHP = 0;
             let contadorARR = 0;
+            let contadorCRISTA = 0; // Novo contador
             let contadorOutros = 0;
-            // ----------------------------------------------
+            // ------------------------------------
 
             lines.forEach(line => {
                 line = line.trim();
                 const parts = line.trim().split(',');
                 if (parts.length < 5) {
-                    console.warn('Linha CSV ignorada:', line);
                     return;
                 }
 
@@ -840,7 +842,7 @@
 
                 const pointGeo = new THREE.SphereGeometry(0.5, 16, 16);
                 
-                // --- LÓGICA DE COR E CONTAGEM CORRIGIDA ---
+                // --- LÓGICA DE COR E CONTAGEM ATUALIZADA ---
                 let corDoPonto = 0xff0000; // Padrão
                 const idMaiusculo = pointID.toUpperCase();
 
@@ -852,6 +854,10 @@
                     corDoPonto = 0xffff00; // Amarelo
                     contadorARR++;
                 } 
+                else if (idMaiusculo.includes('CRISTA')) {
+                    corDoPonto = 0xffa500; // Laranja (Novo)
+                    contadorCRISTA++;
+                }
                 else {
                     corDoPonto = 0xff0000; // Vermelho
                     contadorOutros++;
@@ -878,11 +884,14 @@
                 pointMesh.add(labelObject);
             });
 
-            // --- ATUALIZAÇÃO DO HTML DA LEGENDA ---
-            document.getElementById('qtd-dhp').innerText = contadorDHP;
-            document.getElementById('qtd-arr').innerText = contadorARR;
-            document.getElementById('qtd-outros').innerText = contadorOutros;
-            document.getElementById('qtd-total').innerText = contadorDHP + contadorARR + contadorOutros;
+            // --- ATUALIZAÇÃO DA LEGENDA NA TELA ---
+            if (document.getElementById('qtd-dhp')) {
+                document.getElementById('qtd-dhp').innerText = contadorDHP;
+                document.getElementById('qtd-arr').innerText = contadorARR;
+                document.getElementById('qtd-crista').innerText = contadorCRISTA; // Atualiza Crista
+                document.getElementById('qtd-outros').innerText = contadorOutros;
+                document.getElementById('qtd-total').innerText = contadorDHP + contadorARR + contadorCRISTA + contadorOutros;
+            }
             // --------------------------------------
 
             if (hasPoints) {
@@ -1061,4 +1070,20 @@
 </body>
 
 </html>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
