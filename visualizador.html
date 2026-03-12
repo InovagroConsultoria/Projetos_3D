@@ -12,47 +12,59 @@
         body { margin: 0; background-color: #f0f0f0; overflow: hidden; }
         canvas { display: block; }
         
+/* --- MODIFICADO: Estilos modernos do Menu de Controles --- */
         #controls {
             position: absolute;
-            top: 10px;
-            left: 10px;
+            top: 15px;
+            left: 15px;
             z-index: 10; 
-            padding: 8px; 
-            background: rgba(255, 255, 255, 0.9);
-            border-radius: 5px;
-            font-family: sans-serif;
-            max-width: 250px;
+            padding: 10px; 
+            /* Efeito Glassmorphism (Desfoque/Blur) */
+            background: rgba(255, 255, 255, 0.7);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px); /* Suporte para Safari/iOS */
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            border-radius: 12px; /* Bordas mais arredondadas */
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+            max-width: 300px;
             overflow: hidden; 
-            transition: height 0.3s ease, width 0.3s ease; 
-            width: 30px; 
-            height: 30px;
+            /* Transição mais suave e elástica */
+            transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1); 
+            width: 35px; 
+            height: 35px;
             cursor: pointer; 
-            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
         }
         #controls.expanded {
-            width: 250px; 
+            width: 280px; 
             height: auto; 
             cursor: default;
-            max-height: calc(100vh - 40px); 
+            max-height: calc(100vh - 80px); 
             overflow-y: auto; 
-        }
-        #controls-content {
-            display: none; 
-        }
-        #controls.expanded #controls-content {
-            display: block; 
         }
         #toggle-button {
             font-size: 24px;
-            line-height: 30px; 
+            line-height: 35px; 
             text-align: center;
             user-select: none; 
+            width: 35px;  /* NOVO: Trava a largura da engrenagem */
+            height: 35px; /* NOVO: Trava a altura para o giro ser perfeito */
+            transition: transform 0.3s ease; 
         }
         #controls.expanded #toggle-button {
-            text-align: right; 
-            padding-right: 5px;
+            float: right; /* NOVO: Joga a engrenagem para o canto direito */
+            transform: rotate(90deg); 
         }
-
+        #controls-content {
+            display: none; 
+            margin-top: 10px; /* Espaço extra após expandir */
+        }
+        #controls.expanded #controls-content {
+            display: block; 
+            clear: both; /* NOVO: Garante que os menus fiquem abaixo da engrenagem */
+            padding-top: 5px; 
+        }
+        /* --- FIM DA MODIFICAÇÃO --- */
         #controls label, #controls h4 {
             display: block;
             margin-bottom: 5px;
@@ -244,6 +256,32 @@
             width: auto;
             z-index: 11; /* Para ficar em cima da barra */
         }
+        /* --- NOVO: Regras de Responsividade --- */
+        @media (max-width: 768px) {
+            #controls {
+                top: auto;
+                bottom: 80px; /* Joga o menu para perto do rodapé no celular */
+                left: 10px;
+            }
+            #controls.expanded {
+                width: calc(100vw - 40px); /* Ocupa quase a tela toda na horizontal */
+                max-height: 40vh; /* Ocupa no máximo 40% da altura da tela */
+            }
+            #legenda-painel {
+                top: 10px;
+                right: 10px;
+                padding: 10px 15px;
+                min-width: 160px;
+            }
+            #legenda-painel h3 {
+                font-size: 14px;
+            }
+            .legenda-item {
+                font-size: 12px;
+                margin-bottom: 8px;
+            }
+        }
+        /* --- FIM DA MODIFICAÇÃO --- */
     </style>
 </head>
 <body>
@@ -308,23 +346,56 @@
     </div>
 
     <style>
+        /* --- MODIFICADO: Estilos modernos da Legenda --- */
         #legenda-painel {
             position: absolute;
-            top: 20px;
-            right: 20px;
-            background-color: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 15px;
-            border-radius: 8px;
-            font-family: Arial, sans-serif;
+            top: 15px;
+            right: 15px;
+            /* Efeito Glassmorphism Escuro para contrastar com o menu branco */
+            background-color: rgba(30, 30, 30, 0.75);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #f0f0f0;
+            padding: 15px 20px;
+            border-radius: 12px;
+            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
             z-index: 999;
             min-width: 200px;
-            border: 1px solid #444;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+            transition: all 0.3s ease;
         }
-        #legenda-painel h3 { margin-top: 0; font-size: 16px; border-bottom: 1px solid #666; padding-bottom: 5px; margin-bottom: 10px; }
-        .legenda-item { display: flex; align-items: center; margin-bottom: 8px; font-size: 14px; }
-        .bola { width: 12px; height: 12px; border-radius: 50%; display: inline-block; margin-right: 10px; }
-        .legenda-total { margin-top: 10px; padding-top: 10px; border-top: 1px solid #666; font-size: 14px; }
+        #legenda-painel h3 { 
+            margin-top: 0; 
+            font-size: 15px; 
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2); 
+            padding-bottom: 8px; 
+            margin-bottom: 12px; 
+            font-weight: 600;
+            letter-spacing: 0.5px;
+        }
+        .legenda-item { 
+            display: flex; 
+            align-items: center; 
+            margin-bottom: 10px; 
+            font-size: 13px; 
+        }
+        .bola { 
+            width: 14px; 
+            height: 14px; 
+            border-radius: 50%; 
+            display: inline-block; 
+            margin-right: 12px; 
+            box-shadow: 0 2px 4px rgba(0,0,0,0.5); /* Sombrinha na cor para destacar */
+        }
+        .legenda-total { 
+            margin-top: 15px; 
+            padding-top: 12px; 
+            border-top: 1px solid rgba(255, 255, 255, 0.2); 
+            font-size: 14px; 
+            font-weight: bold;
+        }
+        /* --- FIM DA MODIFICAÇÃO --- */
     </style>
     <script type="importmap">
     {
@@ -482,7 +553,11 @@
             scene.background = new THREE.Color(0xabcdef);
             
             camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 10, 50000); 
-            camera.position.copy(originalCameraPosition); 
+            
+            /* --- NOVO: Define o eixo Z (Northing) apontando para cima na tela --- */
+            camera.up.set(0, 0, 1); 
+            
+            camera.position.copy(originalCameraPosition);
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(window.innerWidth, window.innerHeight);
@@ -548,7 +623,7 @@
             zLabel.position.set(0, 0, axisLength + 5); 
             orientationGizmo.add(zLabel);
             
-            scene.add(orientationGizmo);
+            //scene.add(orientationGizmo);
 
             // Event Listeners
             
@@ -724,11 +799,13 @@
                     controls.target.copy(center); 
                     orientationGizmo.position.copy(center); 
                     
-                    const size = box.getSize(new THREE.Vector3()).length();
+                   const size = box.getSize(new THREE.Vector3()).length();
                     camera.position.copy(center);
-                    camera.position.x += size / 2.0;
-                    camera.position.y += size / 5.0;
-                    camera.position.z += size / 2.0;
+                    
+                    /* --- MODIFICADO: Posiciona a câmera no eixo X negativo olhando para o modelo --- */
+                    camera.position.x -= size * 1.2; 
+                    /* Os eixos Y e Z da câmera permanecem iguais ao 'center' para manter a visão reta */
+                    /* --- FIM DA MODIFICAÇÃO --- */
 
                     originalSurfaceCenter.copy(center);
                     originalCameraPosition.copy(camera.position);
@@ -798,7 +875,7 @@
                         orientationGizmo.position.copy(center);
 
                         camera.position.copy(center);
-                        camera.position.x += size / 2.0;
+                        camera.position.x += size / 1.2;
                         camera.position.y += size / 5.0;
                         camera.position.z += size / 2.0;
                         
@@ -1070,23 +1147,4 @@
 </body>
 
 </html>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
