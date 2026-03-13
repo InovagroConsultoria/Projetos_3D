@@ -871,10 +871,13 @@
                 /* --- NOVO: Atualiza o texto com a porcentagem de download da malha --- */
                 (xhr) => {
                     if (xhr.lengthComputable) {
-                        const percentComplete = (xhr.loaded / xhr.total) * 100;
+                        // Calcula a porcentagem e usa Math.min para travar no máximo em 100%
+                        let percentComplete = (xhr.loaded / xhr.total) * 100;
+                        percentComplete = Math.min(Math.round(percentComplete), 100);
+                        
                         const loadingText = document.getElementById('loading-text');
                         if (loadingText) {
-                            loadingText.innerText = 'Carregando malha: ' + Math.round(percentComplete) + '%';
+                            loadingText.innerText = 'Carregando malha: ' + percentComplete + '%';
                         }
                     }
                 },
