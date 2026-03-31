@@ -1006,8 +1006,8 @@
                     corDoPonto = 0xffff00; // Amarelo
                     contadorARR++;
                 } 
-                else if (idMaiusculo.includes('CRISTA')) {
-                    corDoPonto = 0xffa500; // Laranja (Novo)
+                else if (idMaiusculo.includes('CRISTA') || idMaiusculo.startsWith('CR')) {
+                    corDoPonto = 7C3AED; // Laranja
                     contadorCRISTA++;
                 }
                 else {
