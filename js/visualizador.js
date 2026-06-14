@@ -471,6 +471,7 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
     let contadorDHP = 0;
     let contadorARR = 0;
     let contadorCRISTA = 0;
+    let contadorViga = 0;
     let contadorOutros = 0;
 
     rows.forEach(parts => {
@@ -505,6 +506,9 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
         } else if (idMaiusculo.includes('CRISTA') || idMaiusculo.startsWith('CR')) {
             corDoPonto = 0x800080; // Roxo
             contadorCRISTA++;
+        } else if (idMaiusculo.includes('VIGA')) {
+            corDoPonto = 0x808080; // Cinza
+            contadorViga++;
         } else {
             corDoPonto = 0xff0000; // Vermelho
             contadorOutros++;
@@ -541,8 +545,9 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
         document.getElementById('qtd-dhp').innerText = contadorDHP;
         document.getElementById('qtd-arr').innerText = contadorARR;
         document.getElementById('qtd-crista').innerText = contadorCRISTA;
+        document.getElementById('qtd-viga').innerText = contadorViga;
         document.getElementById('qtd-outros').innerText = contadorOutros;
-        document.getElementById('qtd-total').innerText = contadorDHP + contadorARR + contadorCRISTA + contadorOutros;
+        document.getElementById('qtd-total').innerText = contadorDHP + contadorARR + contadorCRISTA + contadorViga + contadorOutros;
     }
 
     // Filtros por prefixo
