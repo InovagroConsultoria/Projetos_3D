@@ -1,0 +1,330 @@
+body { margin: 0; background-color: #f0f0f0; overflow: hidden; }
+canvas { display: block; }
+
+/* --- Menu de Controles (Glassmorphism) --- */
+#controls {
+    position: absolute;
+    top: 15px;
+    left: 15px;
+    z-index: 10;
+    padding: 10px;
+    background: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.4);
+    border-radius: 12px;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    max-width: 300px;
+    overflow: hidden;
+    transition: all 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
+    width: 35px;
+    height: 35px;
+    cursor: pointer;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+}
+#controls.expanded {
+    width: 280px;
+    height: auto;
+    cursor: default;
+    max-height: calc(100vh - 80px);
+    overflow-y: auto;
+}
+#toggle-button {
+    font-size: 24px;
+    line-height: 35px;
+    text-align: center;
+    user-select: none;
+    width: 35px;
+    height: 35px;
+    transition: transform 0.3s ease;
+}
+#controls.expanded #toggle-button {
+    float: right;
+    transform: rotate(90deg);
+}
+#controls-content {
+    display: none;
+    margin-top: 10px;
+}
+#controls.expanded #controls-content {
+    display: block;
+    clear: both;
+    padding-top: 5px;
+}
+#controls label, #controls h4 {
+    display: block;
+    margin-bottom: 5px;
+    margin-top: 10px;
+}
+#controls input {
+    display: block;
+    margin-bottom: 10px;
+    width: 90%;
+}
+
+#search-container {
+    display: flex;
+    width: 100%;
+}
+#searchInput {
+    flex-grow: 1;
+    width: 65%;
+    margin: 0 5px 0 0;
+}
+#searchButton {
+    width: 30%;
+    margin: 0;
+    padding: 5px;
+}
+#resetViewButton {
+    width: 95%;
+    margin-top: 5px;
+    padding: 5px;
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    border-radius: 3px;
+    cursor: pointer;
+}
+#resetViewButton:hover {
+    background-color: #5a6268;
+}
+
+/* --- Caixa de informações do ponto (canto inferior direito) --- */
+#info-box-container {
+    position: absolute;
+    bottom: 50px; /* acima da barra de rodapé (40px + margem) */
+    right: 10px;
+    z-index: 11;
+    background: rgba(255, 255, 255, 0.9);
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    padding: 10px 15px;
+    font-family: sans-serif;
+    max-width: 220px;
+    display: none;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+#info-box {
+    font-size: 13px;
+}
+#info-box strong {
+    color: #333;
+}
+#close-info-box {
+    position: absolute;
+    top: 2px;
+    right: 5px;
+    font-size: 20px;
+    font-weight: bold;
+    color: #aaa;
+    cursor: pointer;
+    user-select: none;
+}
+#close-info-box:hover {
+    color: #555;
+}
+
+#label-filter-container {
+    max-height: 150px;
+    overflow-y: auto;
+    background: #fdfdfd;
+    padding: 8px;
+    border-radius: 3px;
+    border: 1px solid #ccc;
+}
+#filter-all-container {
+    font-weight: bold;
+    border-bottom: 1px solid #eee;
+    padding-bottom: 5px;
+    margin-bottom: 5px;
+}
+#label-filter-container div {
+    font-family: sans-serif;
+    font-size: 14px;
+    user-select: none;
+}
+#label-filter-container label {
+    display: inline;
+    margin: 0;
+}
+#label-filter-container input {
+    display: inline;
+    width: auto;
+    margin-bottom: 5px;
+}
+
+.label {
+    color: #FFF;
+    font-family: sans-serif;
+    padding: 2px 5px;
+    background: rgba(0, 0, 0, 0.6);
+    border-radius: 3px;
+    font-size: 12px;
+    white-space: nowrap;
+    transition: opacity 0.2s ease-in-out;
+}
+body.labels-hidden .label {
+    opacity: 0;
+    pointer-events: none;
+}
+
+.axis-label {
+    font-family: sans-serif;
+    font-weight: bold;
+    font-size: 14px;
+    padding: 2px 4px;
+    border-radius: 3px;
+    color: #fff;
+}
+.axis-label-x { background: rgba(204, 0, 0, 0.7); }   /* Vermelho */
+.axis-label-y { background: rgba(0, 153, 0, 0.7); }   /* Verde */
+.axis-label-z { background: rgba(0, 0, 204, 0.7); }   /* Azul */
+
+#version-text {
+    position: absolute;
+    bottom: 12px;
+    left: 10px;
+    color: #555;
+    font-family: sans-serif;
+    font-size: 12px;
+    z-index: 11;
+}
+
+/* --- Barra de Rodapé --- */
+#footer-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 40px;
+    background-color: white;
+    color: black;
+    text-align: center;
+    line-height: 40px;
+    z-index: 10;
+    font-family: sans-serif;
+    font-size: 14px;
+    box-shadow: 0 -2px 5px rgba(0, 0, 0, 0.1);
+}
+
+#footer-logo {
+    position: absolute;
+    bottom: 5px;
+    right: 10px;
+    height: 30px;
+    width: auto;
+    z-index: 11;
+}
+
+/* --- Legenda e Quantitativos (Glassmorphism escuro) --- */
+#legenda-painel {
+    position: absolute;
+    top: 15px;
+    right: 15px;
+    background-color: rgba(30, 30, 30, 0.75);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: #f0f0f0;
+    padding: 15px 20px;
+    border-radius: 12px;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    z-index: 999;
+    min-width: 200px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease;
+}
+#legenda-painel h3 {
+    margin-top: 0;
+    font-size: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 8px;
+    margin-bottom: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+}
+.legenda-item {
+    display: flex;
+    align-items: center;
+    margin-bottom: 10px;
+    font-size: 13px;
+}
+.bola {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    display: inline-block;
+    margin-right: 12px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+}
+.legenda-total {
+    margin-top: 15px;
+    padding-top: 12px;
+    border-top: 1px solid rgba(255, 255, 255, 0.2);
+    font-size: 14px;
+    font-weight: bold;
+}
+
+/* --- Responsividade --- */
+@media (max-width: 768px) {
+    #controls {
+        top: auto;
+        bottom: 80px;
+        left: 10px;
+    }
+    #controls.expanded {
+        width: calc(100vw - 40px);
+        max-height: 40vh;
+    }
+    #legenda-painel {
+        top: 10px;
+        right: 10px;
+        padding: 10px 15px;
+        min-width: 160px;
+    }
+    #legenda-painel h3 { font-size: 14px; }
+    .legenda-item { font-size: 12px; margin-bottom: 8px; }
+}
+
+/* --- Tela de Carregamento --- */
+#loading-screen {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(244, 247, 246, 0.85);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    color: #333;
+    transition: opacity 0.5s ease;
+}
+#loading-screen.hidden {
+    opacity: 0;
+    pointer-events: none;
+}
+.spinner {
+    border: 4px solid rgba(0, 0, 0, 0.1);
+    border-top: 4px solid #378640;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+#loading-text {
+    font-size: 18px;
+    font-weight: 500;
+}
