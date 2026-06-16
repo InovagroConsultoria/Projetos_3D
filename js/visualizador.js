@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { TrackballControls } from 'three/addons/controls/TrackballControls.js';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
@@ -61,6 +61,11 @@ let lastSearchQuery = '';
 // --- Estado de visibilidade dos rótulos ---
 let enabledPrefixes = new Set(); // categorias (prefixos) ativas no filtro
 let labelsVisibleByZoom = true;  // rótulos visíveis na distância atual?
+
+// --- Zoom suave (inércia na roda do mouse) ---
+let desiredZoomDistance = null;  // distância-alvo câmera→alvo; null = sem zoom pendente
+const ZOOM_WHEEL_FACTOR = 1.12;  // quanto cada "passo" da roda multiplica a distância
+const ZOOM_SMOOTHING = 0.18;     // fração interpolada por frame (maior = mais rápido)
 let isAnimating = false;
 let animStartTime = 0;
 const animDuration = 1000;
@@ -177,15 +182,18 @@ function init() {
     labelRenderer.domElement.style.zIndex = 1;
     document.body.appendChild(labelRenderer.domElement);
 
-    controls = new TrackballControls(camera, renderer.domElement);
-    controls.rotateSpeed = 1.0;
-    controls.zoomSpeed = 0.6;
-    controls.panSpeed = 0.4;
-    controls.noZoom = false;
-    controls.noPan = false;
-    controls.staticMoving = false;
-    controls.dynamicDampingFactor = 0.15;
+    controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;       // inércia suave (movimento fluido)
+    controls.dampingFactor = 0.08;
+    controls.rotateSpeed = 0.48;         // giro ~20% mais suave (menos sensível)
+    controls.panSpeed = 0.7;
+    controls.enableZoom = false;         // zoom da roda é tratado manualmente (suave)
+    controls.screenSpacePanning = true;  // pan no plano da tela
     controls.target.set(0, 0, 0);
+    // minDistance/maxDistance são ajustados em loadSurface conforme o tamanho do modelo.
+
+    // Zoom suave próprio (a roda do OrbitControls é "em degraus", sem inércia).
+    renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
 
     // Luzes
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0xaaaaaa, 3.0);
@@ -415,6 +423,11 @@ function loadSurface(url) {
             camera.position.copy(center);
             camera.position.x -= size * 1.2; // câmera no eixo X negativo, olhando para o modelo
 
+            // Limites de zoom proporcionais ao tamanho do modelo (evita
+            // aproximar/afastar demais e travar a navegação).
+            controls.minDistance = Math.max(size * 0.02, 2);
+            controls.maxDistance = size * 6;
+
             originalSurfaceCenter.copy(center);
             originalCameraPosition.copy(camera.position);
 
@@ -642,7 +655,6 @@ function onWindowResize() {
     camera.updateProjectionMatrix();
     renderer.setSize(window.innerWidth, window.innerHeight);
     labelRenderer.setSize(window.innerWidth, window.innerHeight);
-    controls.handleResize();
 }
 
 function handleSearch() {
@@ -667,7 +679,6 @@ function handleSearch() {
     const targetPoint = searchMatches[searchIndex];
     targetPoint.visible = true; // garante que apareça mesmo se a categoria estiver filtrada
 
-    controls.reset();
     flyToPoint(targetPoint, true);
     deselectPoint();
 
@@ -679,7 +690,6 @@ function handleSearch() {
 function resetView() {
     if (isAnimating) return;
     deselectPoint();
-    controls.reset();
     flyToPoint(null, false);
 }
 
@@ -695,6 +705,7 @@ function flyToPoint(pointMesh, isSearch) {
     animStartPosition.copy(camera.position);
     animStartTarget.copy(controls.target);
 
+    desiredZoomDistance = null; // cancela zoom suave pendente durante o voo
     isAnimating = true;
     animStartTime = performance.now();
     controls.enabled = false;
@@ -718,6 +729,36 @@ function updateAnimation() {
     }
 }
 
+// Roda do mouse: define a distância-alvo (não move na hora; o animate desliza).
+function onWheel(event) {
+    event.preventDefault();
+    if (isAnimating || !controls) return;
+    const base = (desiredZoomDistance !== null)
+        ? desiredZoomDistance
+        : camera.position.distanceTo(controls.target);
+    const alvo = base * Math.pow(ZOOM_WHEEL_FACTOR, event.deltaY / 100);
+    const min = controls.minDistance || 1;
+    const max = controls.maxDistance || Infinity;
+    desiredZoomDistance = Math.min(Math.max(alvo, min), max);
+}
+
+// Desliza a câmera suavemente até a distância-alvo (inércia do zoom).
+function applySmoothZoom() {
+    if (desiredZoomDistance === null) return;
+    const offset = camera.position.clone().sub(controls.target);
+    const atual = offset.length();
+    const proximo = THREE.MathUtils.lerp(atual, desiredZoomDistance, ZOOM_SMOOTHING);
+    // Encerra quando estiver perto o bastante do alvo.
+    if (Math.abs(proximo - atual) < Math.max(atual * 0.0008, 0.0005)) {
+        offset.setLength(desiredZoomDistance);
+        camera.position.copy(controls.target).add(offset);
+        desiredZoomDistance = null;
+        return;
+    }
+    offset.setLength(proximo);
+    camera.position.copy(controls.target).add(offset);
+}
+
 function animate() {
     requestAnimationFrame(animate);
     updateLabelVisibilityByZoom();
@@ -725,32 +766,13 @@ function animate() {
     if (isAnimating) {
         updateAnimation();
     } else {
-        // Não move a câmera quando o mouse está sobre os painéis de UI
-        const controlsPanel = document.getElementById('controls');
-        const infoBoxPanel = document.getElementById('info-box-container');
-
-        let mouseIsOverUI = false;
-        const lastMouseMoveEvent = window._lastMouseMoveEvent;
-        if (lastMouseMoveEvent) {
-            const controlsRect = controlsPanel.getBoundingClientRect();
-            const infoBoxRect = infoBoxPanel.style.display === 'block' ? infoBoxPanel.getBoundingClientRect() : null;
-
-            const overControls = lastMouseMoveEvent.clientX >= controlsRect.left && lastMouseMoveEvent.clientX <= controlsRect.right &&
-                                 lastMouseMoveEvent.clientY >= controlsRect.top && lastMouseMoveEvent.clientY <= controlsRect.bottom;
-            const overInfoBox = infoBoxRect &&
-                                (lastMouseMoveEvent.clientX >= infoBoxRect.left && lastMouseMoveEvent.clientX <= infoBoxRect.right &&
-                                 lastMouseMoveEvent.clientY >= infoBoxRect.top && lastMouseMoveEvent.clientY <= infoBoxRect.bottom);
-
-            mouseIsOverUI = overControls || overInfoBox;
-        }
-
-        if (!mouseIsOverUI) controls.update();
+        // OrbitControls escuta eventos no canvas; os painéis de UI são
+        // elementos separados por cima, então não interferem na câmera.
+        // Atualiza sempre para o amortecimento (inércia) ficar fluido.
+        applySmoothZoom();
+        controls.update();
     }
 
     renderer.render(scene, camera);
     labelRenderer.render(scene, camera);
 }
-
-window.addEventListener('mousemove', (event) => {
-    window._lastMouseMoveEvent = event;
-}, false);
