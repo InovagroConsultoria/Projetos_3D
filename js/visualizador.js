@@ -24,8 +24,8 @@ const csvFileURL = params.get('csv');
 const dataLevantamento = params.get('data'); // ex.: "13/06/2026" (opcional)
 
 if (!glbFileURL || !csvFileURL) {
-    alert("Erro: Nenhum arquivo de projeto foi especificado na URL. Por favor, selecione um projeto a partir da página inicial.");
-    window.location.href = "index.html";
+    // O módulo executa após o HTML ser interpretado, então a tela de carregamento já existe.
+    showError("Nenhum projeto foi especificado. Selecione um talude no menu inicial.");
 }
 
 let camera, scene, renderer, labelRenderer, controls;
@@ -59,13 +59,16 @@ let searchIndex = -1;
 let lastSearchQuery = '';
 
 // --- Estado de visibilidade dos rótulos ---
-let enabledPrefixes = new Set(); // categorias (prefixos) ativas no filtro
+let enabledPrefixes = new Set(); // prefixos de nome ativos (filtro da engrenagem)
+let enabledCategories = new Set(['dhp', 'arr', 'crista', 'viga', 'outros']); // categorias ativas (legenda)
 let labelsVisibleByZoom = true;  // rótulos visíveis na distância atual?
 
-// --- Zoom suave (inércia na roda do mouse) ---
+// --- Zoom suave (inércia na roda do mouse e pinça no toque) ---
 let desiredZoomDistance = null;  // distância-alvo câmera→alvo; null = sem zoom pendente
 const ZOOM_WHEEL_FACTOR = 1.12;  // quanto cada "passo" da roda multiplica a distância
 const ZOOM_SMOOTHING = 0.18;     // fração interpolada por frame (maior = mais rápido)
+let pinchStartDistance = 0;      // distância entre os dois dedos no início da pinça
+let pinchStartCameraDistance = 0;// distância câmera→alvo no início da pinça
 let isAnimating = false;
 let animStartTime = 0;
 const animDuration = 1000;
@@ -118,11 +121,25 @@ function updateLabelVisibility() {
 function applyVisibility() {
     if (!currentPointsGroup) return;
     currentPointsGroup.children.forEach(pointMesh => {
-        const enabled = enabledPrefixes.has(pointMesh.userData.prefix);
+        // Visível só se o prefixo (engrenagem) E a categoria (legenda) estiverem ativos.
+        const enabled = enabledPrefixes.has(pointMesh.userData.prefix)
+            && enabledCategories.has(pointMesh.userData.categoria);
         pointMesh.visible = enabled;
         const label = pointMesh.userData.label;
         if (label) label.visible = enabled && labelsVisibleByZoom;
     });
+}
+
+// Liga/desliga uma categoria (clique na legenda) e reaplica a visibilidade.
+function toggleCategoria(categoria, itemEl) {
+    if (enabledCategories.has(categoria)) {
+        enabledCategories.delete(categoria);
+        itemEl.classList.add('categoria-off');
+    } else {
+        enabledCategories.add(categoria);
+        itemEl.classList.remove('categoria-off');
+    }
+    applyVisibility();
 }
 
 function toggleAllFilters(event) {
@@ -156,7 +173,7 @@ if (glbFileURL && csvFileURL) {
         })
         .catch(error => {
             console.error("Falha ao carregar o arquivo CSV:", error);
-            alert("Não foi possível carregar os dados dos pontos. Verifique o console.");
+            showError("Não foi possível carregar os dados dos pontos (CSV).", csvFileURL);
         });
 }
 
@@ -194,6 +211,11 @@ function init() {
 
     // Zoom suave próprio (a roda do OrbitControls é "em degraus", sem inércia).
     renderer.domElement.addEventListener('wheel', onWheel, { passive: false });
+    // Pinça de dois dedos no toque (o zoom nativo do OrbitControls está desligado).
+    renderer.domElement.addEventListener('touchstart', onTouchStart, { passive: false });
+    renderer.domElement.addEventListener('touchmove', onTouchMove, { passive: false });
+    renderer.domElement.addEventListener('touchend', onTouchEnd);
+    renderer.domElement.addEventListener('touchcancel', onTouchEnd);
 
     // Luzes
     const hemiLight = new THREE.HemisphereLight(0xffffff, 0xaaaaaa, 3.0);
@@ -251,8 +273,13 @@ function init() {
             e.preventDefault();
         }
     });
-    document.getElementById('resetViewButton').addEventListener('click', resetView);
+    document.getElementById('frameButton').addEventListener('click', frameModel);
     renderer.domElement.addEventListener('click', onPointClick);
+
+    // Clique nos itens da legenda liga/desliga cada categoria.
+    document.querySelectorAll('#legenda-painel .legenda-item[data-categoria]').forEach(item => {
+        item.addEventListener('click', () => toggleCategoria(item.dataset.categoria, item));
+    });
 
     document.getElementById('originE').addEventListener('change', reloadData);
     document.getElementById('originElev').addEventListener('change', reloadData);
@@ -379,6 +406,25 @@ function hideLoadingScreen() {
     }
 }
 
+// Mostra um estado de erro claro na tela (em vez de alert), com a opção
+// de voltar ao menu. `detalhe` é um texto técnico opcional (ex.: o caminho).
+function showError(mensagem, detalhe) {
+    const loadingScreen = document.getElementById('loading-screen');
+    if (!loadingScreen) {
+        alert(mensagem);
+        return;
+    }
+    loadingScreen.classList.remove('hidden');
+    loadingScreen.style.display = 'flex';
+    loadingScreen.classList.add('error');
+    loadingScreen.innerHTML = `
+        <div class="error-icon">⚠️</div>
+        <div id="loading-text">${mensagem}</div>
+        ${detalhe ? `<div class="error-detail">${detalhe}</div>` : ''}
+        <a class="error-button" href="index.html">Voltar ao menu</a>
+    `;
+}
+
 function loadSurface(url) {
     if (currentSurface) {
         scene.remove(currentSurface);
@@ -443,8 +489,7 @@ function loadSurface(url) {
         },
         (error) => {
             console.error('Erro ao carregar a superfície:', error);
-            alert('Erro ao carregar o arquivo da superfície.');
-            hideLoadingScreen();
+            showError("Não foi possível carregar o modelo 3D (GLB).", url);
         }
     );
 }
@@ -567,6 +612,7 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
         pointMesh.userData.originalMaterial = CATEGORY_MATERIALS[categoria];
         pointMesh.userData.originalCoords = { e: rawE, elev: rawElev, n: rawN };
         pointMesh.userData.prefix = prefix;
+        pointMesh.userData.categoria = categoria;
         pointMesh.position.set(x, y, z);
         currentPointsGroup.add(pointMesh);
 
@@ -679,7 +725,7 @@ function handleSearch() {
     const targetPoint = searchMatches[searchIndex];
     targetPoint.visible = true; // garante que apareça mesmo se a categoria estiver filtrada
 
-    flyToPoint(targetPoint, true);
+    flyToPoint(targetPoint);
     deselectPoint();
 
     highlightedPoint = targetPoint;
@@ -687,21 +733,10 @@ function handleSearch() {
     showPointInfo(highlightedPoint, { index: searchIndex, total: searchMatches.length });
 }
 
-function resetView() {
-    if (isAnimating) return;
-    deselectPoint();
-    flyToPoint(null, false);
-}
-
-function flyToPoint(pointMesh, isSearch) {
-    if (isSearch) {
-        animEndTarget.copy(pointMesh.position);
-        animEndPosition.copy(pointMesh.position).add(new THREE.Vector3(0, 20, 20));
-    } else {
-        animEndTarget.copy(originalSurfaceCenter);
-        animEndPosition.copy(originalCameraPosition);
-    }
-
+// Inicia uma animação suave de câmera até (endPosition, endTarget).
+function startFlight(endPosition, endTarget) {
+    animEndPosition.copy(endPosition);
+    animEndTarget.copy(endTarget);
     animStartPosition.copy(camera.position);
     animStartTarget.copy(controls.target);
 
@@ -709,6 +744,30 @@ function flyToPoint(pointMesh, isSearch) {
     isAnimating = true;
     animStartTime = performance.now();
     controls.enabled = false;
+}
+
+function flyToPoint(pointMesh) {
+    const endPos = pointMesh.position.clone().add(new THREE.Vector3(0, 20, 20));
+    startFlight(endPos, pointMesh.position);
+}
+
+// Enquadra o modelo inteiro na tela, mantendo o ângulo de visão atual.
+function frameModel() {
+    if (isAnimating || !currentSurface) return;
+    const box = new THREE.Box3().setFromObject(currentSurface);
+    const center = box.getCenter(new THREE.Vector3());
+    const radius = box.getBoundingSphere(new THREE.Sphere()).radius;
+
+    // Distância para a esfera envolvente caber no campo de visão (com margem).
+    const fov = camera.fov * Math.PI / 180;
+    const dist = (radius / Math.sin(fov / 2)) * 1.1;
+
+    // Mantém a direção de visão atual; se indefinida, usa o eixo X negativo.
+    const dir = camera.position.clone().sub(controls.target);
+    if (dir.lengthSq() < 1e-6) dir.set(-1, 0, 0);
+    dir.normalize();
+
+    startFlight(center.clone().add(dir.multiplyScalar(dist)), center);
 }
 
 function updateAnimation() {
@@ -740,6 +799,41 @@ function onWheel(event) {
     const min = controls.minDistance || 1;
     const max = controls.maxDistance || Infinity;
     desiredZoomDistance = Math.min(Math.max(alvo, min), max);
+}
+
+// Distância (em pixels) entre dois toques.
+function touchDistance(touches) {
+    const dx = touches[0].clientX - touches[1].clientX;
+    const dy = touches[0].clientY - touches[1].clientY;
+    return Math.hypot(dx, dy);
+}
+
+// Início da pinça: guarda a separação dos dedos e a distância atual da câmera.
+function onTouchStart(event) {
+    if (event.touches.length === 2) {
+        pinchStartDistance = touchDistance(event.touches);
+        pinchStartCameraDistance = (desiredZoomDistance !== null)
+            ? desiredZoomDistance
+            : camera.position.distanceTo(controls.target);
+    }
+}
+
+// Movimento da pinça: ajusta a distância-alvo conforme a separação dos dedos.
+function onTouchMove(event) {
+    if (event.touches.length === 2 && pinchStartDistance > 0) {
+        event.preventDefault();
+        const atual = touchDistance(event.touches);
+        if (atual <= 0) return;
+        // Afastar os dedos (atual > inicial) => aproxima (distância menor).
+        const alvo = pinchStartCameraDistance * (pinchStartDistance / atual);
+        const min = controls.minDistance || 1;
+        const max = controls.maxDistance || Infinity;
+        desiredZoomDistance = Math.min(Math.max(alvo, min), max);
+    }
+}
+
+function onTouchEnd(event) {
+    if (event.touches.length < 2) pinchStartDistance = 0;
 }
 
 // Desliza a câmera suavemente até a distância-alvo (inércia do zoom).
