@@ -40,6 +40,27 @@ gltfLoader.setDRACOLoader(dracoLoader);
 
 const highlightMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
 let highlightedPoint = null;
+
+// --- Recursos compartilhados (performance) ---
+// Uma única geometria e um material por categoria são reutilizados por todos
+// os pontos, em vez de criar geometria + material por ponto (milhares de objetos).
+const POINT_GEOMETRY = new THREE.SphereGeometry(0.5, 8, 8);
+const CATEGORY_MATERIALS = {
+    dhp:    new THREE.MeshBasicMaterial({ color: 0x0000ff }), // Azul
+    arr:    new THREE.MeshBasicMaterial({ color: 0xffff00 }), // Amarelo
+    crista: new THREE.MeshBasicMaterial({ color: 0x800080 }), // Roxo
+    viga:   new THREE.MeshBasicMaterial({ color: 0x808080 }), // Cinza
+    outros: new THREE.MeshBasicMaterial({ color: 0xff0000 }), // Vermelho
+};
+
+// --- Estado da busca (suporta IDs duplicados) ---
+let searchMatches = [];
+let searchIndex = -1;
+let lastSearchQuery = '';
+
+// --- Estado de visibilidade dos rótulos ---
+let enabledPrefixes = new Set(); // categorias (prefixos) ativas no filtro
+let labelsVisibleByZoom = true;  // rótulos visíveis na distância atual?
 let isAnimating = false;
 let animStartTime = 0;
 const animDuration = 1000;
@@ -59,18 +80,19 @@ const mouse = new THREE.Vector2();
 // =============================================================
 function updateLabelVisibilityByZoom() {
     if (!camera || !controls) return;
-    const distance = camera.position.distanceTo(controls.target);
-    if (distance > labelVisibilityThreshold) {
-        document.body.classList.add('labels-hidden');
-    } else {
-        document.body.classList.remove('labels-hidden');
+    const within = camera.position.distanceTo(controls.target) <= labelVisibilityThreshold;
+    // Só reaplica quando cruza o limiar (evita varrer todos os pontos a cada frame).
+    if (within !== labelsVisibleByZoom) {
+        labelsVisibleByZoom = within;
+        applyVisibility();
     }
 }
 
+// Lê o estado das checkboxes do filtro e reaplica a visibilidade.
 function updateLabelVisibility() {
     const filterCheckboxes = document.querySelectorAll('#label-filter-container input[type="checkbox"]:not(#chk-filter-all)');
     const filterAllCheckbox = document.getElementById('chk-filter-all');
-    const enabledPrefixes = new Set();
+    enabledPrefixes = new Set();
     let allChecked = true;
 
     filterCheckboxes.forEach(chk => {
@@ -82,13 +104,19 @@ function updateLabelVisibility() {
     });
 
     if (filterAllCheckbox) filterAllCheckbox.checked = allChecked;
+    applyVisibility();
+}
 
+// Aplica a visibilidade de cada ponto (esfera) e do seu rótulo:
+//  - o PONTO some quando sua categoria está desmarcada no filtro;
+//  - o RÓTULO some quando a categoria está desmarcada OU a câmera está longe.
+function applyVisibility() {
     if (!currentPointsGroup) return;
     currentPointsGroup.children.forEach(pointMesh => {
-        const label = pointMesh.children.find(child => child.isCSS2DObject);
-        if (label && label.userData.prefix) {
-            label.visible = enabledPrefixes.has(label.userData.prefix);
-        }
+        const enabled = enabledPrefixes.has(pointMesh.userData.prefix);
+        pointMesh.visible = enabled;
+        const label = pointMesh.userData.label;
+        if (label) label.visible = enabled && labelsVisibleByZoom;
     });
 }
 
@@ -249,14 +277,18 @@ function deselectPoint() {
     document.getElementById('info-box-container').style.display = 'none';
 }
 
-function showPointInfo(pointMesh) {
+function showPointInfo(pointMesh, occurrence) {
     const coords = pointMesh.userData.originalCoords;
     const id = pointMesh.userData.pointID;
+    // occurrence = { index, total } quando a busca encontra IDs repetidos
+    const ocorrenciaLinha = (occurrence && occurrence.total > 1)
+        ? `<br><em>Ocorrência ${occurrence.index + 1} de ${occurrence.total}</em>`
+        : '';
     document.getElementById('info-box').innerHTML = `
         <strong>ID:</strong> ${id}<br>
         <strong>Easting:</strong> ${coords.e.toFixed(3)}<br>
         <strong>Elevação:</strong> ${coords.elev.toFixed(3)}<br>
-        <strong>Northing:</strong> ${coords.n.toFixed(3)}
+        <strong>Northing:</strong> ${coords.n.toFixed(3)}${ocorrenciaLinha}
     `;
     document.getElementById('info-box-container').style.display = 'block';
 }
@@ -279,15 +311,18 @@ function onPointClick(event) {
 
     if (!currentPointsGroup) return;
     const intersects = raycaster.intersectObjects(currentPointsGroup.children);
+    // Ignora pontos ocultos pelo filtro (continuam clicáveis no raycaster).
+    const hit = intersects.find(i => i.object.visible);
 
-    if (intersects.length > 0) {
-        const clickedPoint = intersects[0].object;
+    if (hit) {
         if (highlightedPoint) {
             highlightedPoint.material = highlightedPoint.userData.originalMaterial;
         }
-        highlightedPoint = clickedPoint;
+        highlightedPoint = hit.object;
         highlightedPoint.material = highlightMaterial;
         showPointInfo(highlightedPoint);
+        // Clicar manualmente encerra o ciclo da busca atual.
+        lastSearchQuery = '';
     } else {
         deselectPoint();
     }
@@ -494,33 +529,31 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
         const y = rawN - originN;
         const z = rawElev - originElev;
 
-        // Cor e contagem por categoria
-        let corDoPonto;
+        // Categoria e contagem
+        let categoria;
         const idMaiusculo = pointID.toUpperCase();
         if (idMaiusculo.includes('DHP')) {
-            corDoPonto = 0x0000ff; // Azul
+            categoria = 'dhp';
             contadorDHP++;
         } else if (idMaiusculo.includes('ARR')) {
-            corDoPonto = 0xffff00; // Amarelo
+            categoria = 'arr';
             contadorARR++;
         } else if (idMaiusculo.includes('CRISTA') || idMaiusculo.startsWith('CR')) {
-            corDoPonto = 0x800080; // Roxo
+            categoria = 'crista';
             contadorCRISTA++;
         } else if (idMaiusculo.includes('VIGA')) {
-            corDoPonto = 0x808080; // Cinza
+            categoria = 'viga';
             contadorViga++;
         } else {
-            corDoPonto = 0xff0000; // Vermelho
+            categoria = 'outros';
             contadorOutros++;
         }
 
-        const pointGeo = new THREE.SphereGeometry(0.5, 16, 16);
-        const pointMat = new THREE.MeshBasicMaterial({ color: corDoPonto });
-        const pointMesh = new THREE.Mesh(pointGeo, pointMat);
-
+        const pointMesh = new THREE.Mesh(POINT_GEOMETRY, CATEGORY_MATERIALS[categoria]);
         pointMesh.userData.pointID = idMaiusculo;
-        pointMesh.userData.originalMaterial = pointMat;
+        pointMesh.userData.originalMaterial = CATEGORY_MATERIALS[categoria];
         pointMesh.userData.originalCoords = { e: rawE, elev: rawElev, n: rawN };
+        pointMesh.userData.prefix = prefix;
         pointMesh.position.set(x, y, z);
         currentPointsGroup.add(pointMesh);
 
@@ -532,6 +565,7 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
         labelObject.position.set(0, 1, 0);
         labelObject.userData.prefix = prefix;
         pointMesh.add(labelObject);
+        pointMesh.userData.label = labelObject; // referência p/ controlar visibilidade
     });
 
     const totalPlotados = currentPointsGroup.children.length;
@@ -590,6 +624,13 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
         filterContainer.innerHTML = '<small>Não foram encontrados pontos.</small>';
     }
 
+    // Reseta o estado da busca e aplica a visibilidade inicial (todas as
+    // categorias marcadas => todos os pontos e rótulos visíveis).
+    searchMatches = [];
+    searchIndex = -1;
+    lastSearchQuery = '';
+    updateLabelVisibility();
+
     console.log(`Carregados ${totalPlotados} pontos.`);
 }
 
@@ -608,19 +649,31 @@ function handleSearch() {
     const query = document.getElementById('searchInput').value.toUpperCase().trim();
     if (!query || !currentPointsGroup) return;
 
-    const targetPoint = currentPointsGroup.children.find(point => point.userData.pointID === query);
-
-    if (targetPoint) {
-        controls.reset();
-        flyToPoint(targetPoint, true);
-        deselectPoint();
-
-        highlightedPoint = targetPoint;
-        highlightedPoint.material = highlightMaterial;
-        showPointInfo(highlightedPoint);
+    if (query === lastSearchQuery && searchMatches.length > 0) {
+        // Mesma busca repetida: avança para a próxima ocorrência (ciclo).
+        searchIndex = (searchIndex + 1) % searchMatches.length;
     } else {
-        alert('Ponto não encontrado.');
+        searchMatches = currentPointsGroup.children.filter(p => p.userData.pointID === query);
+        searchIndex = 0;
+        lastSearchQuery = query;
     }
+
+    if (searchMatches.length === 0) {
+        lastSearchQuery = '';
+        alert('Ponto não encontrado.');
+        return;
+    }
+
+    const targetPoint = searchMatches[searchIndex];
+    targetPoint.visible = true; // garante que apareça mesmo se a categoria estiver filtrada
+
+    controls.reset();
+    flyToPoint(targetPoint, true);
+    deselectPoint();
+
+    highlightedPoint = targetPoint;
+    highlightedPoint.material = highlightMaterial;
+    showPointInfo(highlightedPoint, { index: searchIndex, total: searchMatches.length });
 }
 
 function resetView() {
