@@ -615,8 +615,8 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
             // Grampo Crista de Viga — checar ANTES de CRISTA/CR (começa com "CR").
             categoria = 'crvg';
             contadorCRVG++;
-        } else if (idMaiusculo.includes('GFC')) {
-            // Grampo de Fechamento (GFC-XX).
+        } else if (idMaiusculo.startsWith('GF')) {
+            // Grampo de Fechamento: todos que começam com "GF" (GFA, GFB, GFC, ...).
             categoria = 'grampofech';
             contadorGrampoFech++;
         } else if (idMaiusculo.includes('CRISTA') || idMaiusculo.startsWith('CR')) {
