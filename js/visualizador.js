@@ -38,7 +38,7 @@ const dracoLoader = new DRACOLoader();
 dracoLoader.setDecoderPath('https://cdn.jsdelivr.net/npm/three@0.164/examples/jsm/libs/draco/gltf/');
 gltfLoader.setDRACOLoader(dracoLoader);
 
-const highlightMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
+const highlightMaterial = new THREE.MeshBasicMaterial({ color: 0xff1493 }); // rosa pink (ponto pesquisado/selecionado)
 let highlightedPoint = null;
 
 // --- Recursos compartilhados (performance) ---
@@ -46,11 +46,13 @@ let highlightedPoint = null;
 // os pontos, em vez de criar geometria + material por ponto (milhares de objetos).
 const POINT_GEOMETRY = new THREE.SphereGeometry(0.5, 8, 8);
 const CATEGORY_MATERIALS = {
-    dhp:    new THREE.MeshBasicMaterial({ color: 0x0000ff }), // Azul
-    arr:    new THREE.MeshBasicMaterial({ color: 0xffff00 }), // Amarelo
-    crista: new THREE.MeshBasicMaterial({ color: 0x800080 }), // Roxo
-    viga:   new THREE.MeshBasicMaterial({ color: 0x808080 }), // Cinza
-    outros: new THREE.MeshBasicMaterial({ color: 0xff0000 }), // Vermelho
+    dhp:        new THREE.MeshBasicMaterial({ color: 0x0000ff }), // Azul
+    arr:        new THREE.MeshBasicMaterial({ color: 0xffff00 }), // Amarelo
+    crista:     new THREE.MeshBasicMaterial({ color: 0x800080 }), // Roxo
+    viga:       new THREE.MeshBasicMaterial({ color: 0x808080 }), // Cinza
+    crvg:       new THREE.MeshBasicMaterial({ color: 0xff8c00 }), // Laranja (Grampo Crista de Viga)
+    grampofech: new THREE.MeshBasicMaterial({ color: 0x00ff00 }), // Verde limão (Grampo de Fechamento)
+    outros:     new THREE.MeshBasicMaterial({ color: 0xff0000 }), // Vermelho
 };
 
 // --- Estado da busca (suporta IDs duplicados) ---
@@ -60,7 +62,7 @@ let lastSearchQuery = '';
 
 // --- Estado de visibilidade dos rótulos ---
 let enabledPrefixes = new Set(); // prefixos de nome ativos (filtro da engrenagem)
-let enabledCategories = new Set(['dhp', 'arr', 'crista', 'viga', 'outros']); // categorias ativas (legenda)
+let enabledCategories = new Set(['dhp', 'arr', 'crista', 'viga', 'crvg', 'grampofech', 'outros']); // categorias ativas (legenda)
 let labelsVisibleByZoom = true;  // rótulos visíveis na distância atual?
 
 // --- Zoom suave (inércia na roda do mouse e pinça no toque) ---
@@ -494,6 +496,17 @@ function loadSurface(url) {
     );
 }
 
+// Extrai as coordenadas de uma linha conforme o formato detectado:
+//  - Formato novo (TAB, >=7 colunas): ID, E, N, Elev, E, N, Elev
+//    -> usa o 2º conjunto (colunas 5-7), único sempre preenchido (ex.: CRVG).
+//  - Formato antigo (vírgula, 5 colunas): ID, E, Elev, N.
+function extrairCoords(parts) {
+    if (parts.length >= 7) {
+        return { e: parseFloat(parts[4]), n: parseFloat(parts[5]), elev: parseFloat(parts[6]) };
+    }
+    return { e: parseFloat(parts[1]), elev: parseFloat(parts[2]), n: parseFloat(parts[3]) };
+}
+
 // =============================================================
 //  Carregamento dos pontos (.csv)
 // =============================================================
@@ -511,17 +524,15 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
     const prefixes = new Set();
 
     // Parser robusto: ignora linhas vazias, normaliza CR/LF e espaços.
-    const rows = csvData
-        .split(/\r?\n/)
-        .map(line => line.trim())
-        .filter(line => line !== "")
-        .map(line => line.split(',').map(cell => cell.trim()));
-
-    if (rows.length === 0) {
+    // Auto-detecta o delimitador (TAB ou vírgula) pela primeira linha.
+    const linhas = csvData.split(/\r?\n/).map(l => l.trim()).filter(l => l !== "");
+    if (linhas.length === 0) {
         console.warn("Arquivo CSV vazio ou inválido.");
         filterContainer.innerHTML = '<small>Não foram encontrados pontos.</small>';
         return;
     }
+    const delimiter = linhas[0].includes('\t') ? '\t' : ',';
+    const rows = linhas.map(l => l.split(delimiter).map(c => c.trim()));
 
     let originE = parseFloat(document.getElementById('originE').value) || 0;
     let originElev = parseFloat(document.getElementById('originElev').value) || 0;
@@ -531,9 +542,10 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
     if (originE === 0 && originElev === 0 && originN === 0 && !isReload) {
         const first = rows[0];
         if (first.length >= 4) {
-            originE = parseFloat(first[1]);    // Easting
-            originElev = parseFloat(first[2]); // Elevação
-            originN = parseFloat(first[3]);    // Northing
+            const c0 = extrairCoords(first);
+            originE = c0.e;       // Easting
+            originElev = c0.elev; // Elevação
+            originN = c0.n;       // Northing
 
             document.getElementById('originE').value = originE;
             document.getElementById('originElev').value = originElev;
@@ -565,16 +577,19 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
     let contadorARR = 0;
     let contadorCRISTA = 0;
     let contadorViga = 0;
+    let contadorCRVG = 0;
+    let contadorGrampoFech = 0;
     let contadorOutros = 0;
 
     rows.forEach(parts => {
         if (parts.length < 4) return;
 
         const pointID = parts[0];
-        const rawE = parseFloat(parts[1]);    // Easting
-        const rawElev = parseFloat(parts[2]); // Elevação
-        const rawN = parseFloat(parts[3]);    // Northing
-        const desc = parts[4] || "";          // descrição (opcional)
+        const coords = extrairCoords(parts);
+        const rawE = coords.e;       // Easting
+        const rawElev = coords.elev; // Elevação
+        const rawN = coords.n;       // Northing
+        const desc = parts.length >= 7 ? "" : (parts[4] || ""); // descrição só no formato antigo
 
         if (Number.isNaN(rawE) || Number.isNaN(rawElev) || Number.isNaN(rawN)) return;
 
@@ -596,6 +611,14 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
         } else if (idMaiusculo.includes('ARR')) {
             categoria = 'arr';
             contadorARR++;
+        } else if (idMaiusculo.includes('CRVG')) {
+            // Grampo Crista de Viga — checar ANTES de CRISTA/CR (começa com "CR").
+            categoria = 'crvg';
+            contadorCRVG++;
+        } else if (idMaiusculo.includes('GFC')) {
+            // Grampo de Fechamento (GFC-XX).
+            categoria = 'grampofech';
+            contadorGrampoFech++;
         } else if (idMaiusculo.includes('CRISTA') || idMaiusculo.startsWith('CR')) {
             categoria = 'crista';
             contadorCRISTA++;
@@ -639,8 +662,11 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
         document.getElementById('qtd-arr').innerText = contadorARR;
         document.getElementById('qtd-crista').innerText = contadorCRISTA;
         document.getElementById('qtd-viga').innerText = contadorViga;
+        document.getElementById('qtd-crvg').innerText = contadorCRVG;
+        document.getElementById('qtd-grampofech').innerText = contadorGrampoFech;
         document.getElementById('qtd-outros').innerText = contadorOutros;
-        document.getElementById('qtd-total').innerText = contadorDHP + contadorARR + contadorCRISTA + contadorViga + contadorOutros;
+        document.getElementById('qtd-total').innerText =
+            contadorDHP + contadorARR + contadorCRISTA + contadorViga + contadorCRVG + contadorGrampoFech + contadorOutros;
     }
 
     // Filtros por prefixo
