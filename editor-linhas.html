@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <title>Editor de Linhas — Inovagro 3D</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <link rel="stylesheet" href="css/editor-linhas.css">
+</head>
+<body>
+    <div id="loading-screen">
+        <div class="spinner"></div>
+        <div id="loading-text">Carregando pontos...</div>
+    </div>
+
+    <canvas id="editor-canvas"></canvas>
+
+    <!-- Painel de controles (esquerda) -->
+    <div id="painel-controles">
+        <h3 id="titulo-talude">Editor de Linhas</h3>
+
+        <div class="bloco">
+            <label for="input-letra">Letra da linha</label>
+            <div class="linha-form">
+                <input type="text" id="input-letra" maxlength="3" placeholder="A" autocomplete="off">
+                <button id="btn-nova-linha">Nova linha</button>
+            </div>
+        </div>
+
+        <div class="bloco">
+            <label for="slider-exagero">Exagero vertical: <span id="valor-exagero">1.0×</span></label>
+            <input type="range" id="slider-exagero" min="1" max="6" step="0.5" value="1">
+        </div>
+
+        <div class="bloco botoes">
+            <button id="btn-enquadrar">Enquadrar</button>
+            <button id="btn-exportar">Exportar CSV</button>
+            <button id="btn-limpar" class="perigo">Limpar tudo</button>
+        </div>
+
+        <div id="status-barra"></div>
+
+        <details class="ajuda">
+            <summary>Como usar</summary>
+            <ul>
+                <li><b>Criar linha:</b> digite a letra e clique "Nova linha".</li>
+                <li><b>Adicionar ponto:</b> clique no ponto (numera na ordem do clique).</li>
+                <li><b>Seleção em caixa:</b> arraste sobre vários pontos para adicioná-los de uma vez.</li>
+                <li><b>Remover ponto:</b> clique de novo num ponto já da linha atual.</li>
+                <li><b>Mover a tela:</b> arraste com o botão do meio, ou segure <b>Espaço</b> e arraste.</li>
+                <li><b>Zoom:</b> roda do mouse.</li>
+            </ul>
+        </details>
+    </div>
+
+    <!-- Painel de linhas (direita) -->
+    <div id="painel-linhas">
+        <h3>Linhas criadas</h3>
+        <div id="lista-linhas"><small>Nenhuma linha ainda.</small></div>
+    </div>
+
+    <a href="index.html" id="home-link" title="Voltar ao menu de taludes">← Menu</a>
+
+    <script type="module" src="js/editor-linhas.js"></script>
+</body>
+</html>
