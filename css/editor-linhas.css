@@ -75,6 +75,22 @@ button {
 }
 button:hover { background-color: #2a6b32; }
 #btn-nova-linha { flex-grow: 1; }
+
+.grupo-modo { display: flex; gap: 6px; margin-bottom: 6px; }
+.grupo-modo button {
+    flex: 1;
+    background-color: #e9ecef;
+    color: #333;
+    border: 1px solid #ced4da;
+}
+.grupo-modo button:hover { background-color: #dde1e5; }
+.grupo-modo button.ativo {
+    background-color: #378640;
+    color: #fff;
+    border-color: #378640;
+}
+button.largo { width: 100%; background-color: #6c757d; }
+button.largo:hover { background-color: #5a6268; }
 .botoes { display: flex; flex-direction: column; gap: 6px; }
 #btn-enquadrar, #btn-exportar { background-color: #6c757d; }
 #btn-enquadrar:hover, #btn-exportar:hover { background-color: #5a6268; }
@@ -135,7 +151,7 @@ button.perigo:hover { background-color: #a93226; }
     max-height: 48px;
     overflow-y: auto;
 }
-.linha-acoes { margin-top: 6px; display: flex; gap: 6px; }
+.linha-acoes { margin-top: 6px; display: flex; gap: 6px; flex-wrap: wrap; }
 .linha-acoes button {
     font-size: 11px;
     padding: 4px 8px;
