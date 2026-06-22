@@ -30,6 +30,15 @@
         </div>
 
         <div class="bloco">
+            <label>Modo de seleção</label>
+            <div class="grupo-modo">
+                <button id="btn-modo-sel" class="ativo">Selecionar</button>
+                <button id="btn-modo-contorno">Contorno</button>
+            </div>
+            <button id="btn-desfazer" class="largo">↶ Desfazer (Ctrl+Z)</button>
+        </div>
+
+        <div class="bloco">
             <label for="slider-exagero">Exagero vertical: <span id="valor-exagero">1.0×</span></label>
             <input type="range" id="slider-exagero" min="1" max="6" step="0.5" value="1">
         </div>
@@ -46,10 +55,13 @@
             <summary>Como usar</summary>
             <ul>
                 <li><b>Criar linha:</b> digite a letra e clique "Nova linha".</li>
-                <li><b>Adicionar ponto:</b> clique no ponto (numera na ordem do clique).</li>
-                <li><b>Seleção em caixa:</b> arraste sobre vários pontos para adicioná-los de uma vez.</li>
-                <li><b>Remover ponto:</b> clique de novo num ponto já da linha atual.</li>
-                <li><b>Mover a tela:</b> arraste com o botão do meio, ou segure <b>Espaço</b> e arraste.</li>
+                <li><b>Adicionar (Selecionar):</b> clique no ponto, ou arraste uma caixa sobre vários.</li>
+                <li><b>Adicionar (Contorno):</b> clique para criar o contorno; <b>duplo-clique</b> ou <b>Enter</b> fecha e seleciona o que está dentro. <b>Esc</b> cancela.</li>
+                <li><b>Remover ponto:</b> clique de novo num ponto da linha atual.</li>
+                <li><b>Renomear um ponto:</b> clique com o <b>botão direito</b> nele (ex.: "A -1"); a numeração se ajusta sozinha.</li>
+                <li><b>Numeração:</b> automática por proximidade, direita→esquerda (botão "Inverter" em cada linha).</li>
+                <li><b>Desfazer:</b> Ctrl+Z.</li>
+                <li><b>Mover a tela:</b> botão do meio, <b>Espaço</b>+arrastar, ou <b>Ctrl</b>+arrastar.</li>
                 <li><b>Zoom:</b> roda do mouse.</li>
             </ul>
         </details>
