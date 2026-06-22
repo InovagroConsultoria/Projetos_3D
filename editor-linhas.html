@@ -30,12 +30,13 @@
         </div>
 
         <div class="bloco">
-            <label>Modo de seleção</label>
-            <div class="grupo-modo">
-                <button id="btn-modo-sel" class="ativo">Selecionar</button>
-                <button id="btn-modo-contorno">Contorno</button>
-            </div>
             <button id="btn-desfazer" class="largo">↶ Desfazer (Ctrl+Z)</button>
+            <label class="check"><input type="checkbox" id="chk-mostrar-nomes"> Mostrar nomes</label>
+        </div>
+
+        <div class="bloco">
+            <label>Categorias visíveis</label>
+            <div id="filtro-categorias"></div>
         </div>
 
         <div class="bloco">
@@ -46,6 +47,7 @@
         <div class="bloco botoes">
             <button id="btn-enquadrar">Enquadrar</button>
             <button id="btn-exportar">Exportar CSV</button>
+            <button id="btn-pdf">Exportar PDF</button>
             <button id="btn-limpar" class="perigo">Limpar tudo</button>
         </div>
 
@@ -55,14 +57,13 @@
             <summary>Como usar</summary>
             <ul>
                 <li><b>Criar linha:</b> digite a letra e clique "Nova linha".</li>
-                <li><b>Adicionar (Selecionar):</b> clique no ponto, ou arraste uma caixa sobre vários.</li>
-                <li><b>Adicionar (Contorno):</b> clique para criar o contorno; <b>duplo-clique</b> ou <b>Enter</b> fecha e seleciona o que está dentro. <b>Esc</b> cancela.</li>
-                <li><b>Remover ponto:</b> clique de novo num ponto da linha atual.</li>
-                <li><b>Renomear um ponto:</b> clique com o <b>botão direito</b> nele (ex.: "A -1"); a numeração se ajusta sozinha.</li>
-                <li><b>Numeração:</b> automática por proximidade, direita→esquerda (botão "Inverter" em cada linha).</li>
-                <li><b>Desfazer:</b> Ctrl+Z.</li>
-                <li><b>Mover a tela:</b> botão do meio, <b>Espaço</b>+arrastar, ou <b>Ctrl</b>+arrastar.</li>
-                <li><b>Zoom:</b> roda do mouse.</li>
+                <li><b>Contorno livre:</b> clique e <b>arraste</b> contornando os pontos; ao soltar, seleciona o que estiver dentro.</li>
+                <li><b>Caixa:</b> <b>clique</b> num ponto vazio (1º canto), mova e <b>clique de novo</b> (canto oposto) para fechar.</li>
+                <li><b>Um ponto:</b> clique nele para adicionar/remover.</li>
+                <li><b>Renomear um ponto:</b> <b>botão direito</b> (ex.: "A -1"); a numeração se ajusta sozinha.</li>
+                <li><b>Numeração:</b> por proximidade, direita→esquerda ("Inverter" em cada linha).</li>
+                <li><b>Desfazer:</b> Ctrl+Z. <b>Esc</b> cancela a caixa/contorno em andamento.</li>
+                <li><b>Mover a tela:</b> botão do meio, <b>Espaço</b>+arrastar ou <b>Ctrl</b>+arrastar. <b>Zoom:</b> roda.</li>
             </ul>
         </details>
     </div>
@@ -75,6 +76,63 @@
 
     <a href="index.html" id="home-link" title="Voltar ao menu de taludes">← Menu</a>
 
+    <!-- Modal: montagem da prancha PDF -->
+    <div id="pdf-modal" class="hidden">
+        <div class="pdf-modal-inner">
+            <div class="pdf-sidebar">
+                <h3>Montar PDF</h3>
+                <div class="pdf-campo">
+                    <label>Tamanho</label>
+                    <select id="pdf-size">
+                        <option value="A0">A0</option>
+                        <option value="A1">A1</option>
+                        <option value="A3">A3</option>
+                        <option value="A4">A4</option>
+                    </select>
+                </div>
+                <div class="pdf-campo">
+                    <label>Orientação</label>
+                    <select id="pdf-orient">
+                        <option value="paisagem">Paisagem</option>
+                        <option value="retrato">Retrato</option>
+                    </select>
+                </div>
+                <div class="pdf-campo">
+                    <label>Fundo (prancha A0 em PDF)</label>
+                    <input type="file" id="pdf-bg" accept="application/pdf">
+                    <small id="pdf-bg-status"></small>
+                </div>
+                <hr>
+                <div class="pdf-campo"><label>Título</label><input type="text" id="pdf-titulo"></div>
+                <div class="pdf-campo"><label>Projeto</label><input type="text" id="pdf-projeto"></div>
+                <div class="pdf-campo"><label>Data</label><input type="text" id="pdf-data"></div>
+                <div class="pdf-campo"><label>Observações</label><textarea id="pdf-obs" rows="2"></textarea></div>
+                <label class="check"><input type="checkbox" id="pdf-show-info" checked> Bloco de textos</label>
+                <label class="check"><input type="checkbox" id="pdf-show-counts" checked> Blocos de contagem</label>
+                <label class="check"><input type="checkbox" id="pdf-show-legend" checked> Legenda de cores</label>
+                <div class="pdf-actions">
+                    <button id="pdf-gerar">Exportar PDF</button>
+                    <button id="pdf-fechar" class="perigo">Fechar</button>
+                </div>
+                <small class="pdf-dica">Arraste o desenho e os blocos sobre a folha. Use a alça no canto do desenho para redimensionar.</small>
+            </div>
+            <div class="pdf-stage">
+                <div id="pdf-page">
+                    <img id="pdf-bg-img" alt="">
+                    <div id="pdf-el-desenho" class="pdf-el" data-el="desenho">
+                        <img id="pdf-desenho-img" alt="desenho" draggable="false">
+                        <span class="pdf-resize"></span>
+                    </div>
+                    <div id="pdf-el-info" class="pdf-el" data-el="info"></div>
+                    <div id="pdf-el-counts" class="pdf-el" data-el="counts"></div>
+                    <div id="pdf-el-legend" class="pdf-el" data-el="legend"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
     <script type="module" src="js/editor-linhas.js"></script>
 </body>
 </html>
