@@ -41,6 +41,11 @@
         </div>
 
         <div class="bloco">
+            <button id="btn-divisoria" class="largo">✂️ Adicionar divisória</button>
+            <div id="lista-divisorias"></div>
+        </div>
+
+        <div class="bloco">
             <label>Categorias visíveis</label>
             <div id="filtro-categorias"></div>
         </div>
@@ -54,7 +59,7 @@
             <button id="btn-enquadrar">Enquadrar</button>
             <button id="btn-exportar">Exportar CSV</button>
             <button id="btn-pdf">Exportar PDF</button>
-            <button id="btn-limpar" class="perigo">Limpar tudo</button>
+            <button id="btn-limpar" class="perigo">🗑️ Excluir todas as linhas</button>
         </div>
 
         <div id="status-barra"></div>
@@ -77,7 +82,8 @@
                 <li><b>Contorno livre:</b> clique e <b>arraste</b> contornando os pontos; ao soltar, seleciona o que estiver dentro.</li>
                 <li><b>Caixa:</b> <b>clique</b> num ponto vazio (1º canto), mova e <b>clique de novo</b> (canto oposto) para fechar.</li>
                 <li><b>Um ponto:</b> clique nele para adicionar/remover.</li>
-                <li><b>Renomear um ponto:</b> <b>botão direito</b> (ex.: "A -1"); a numeração se ajusta sozinha.</li>
+                <li><b>Renomear um ponto:</b> <b>botão direito</b> abre um mini-card (ex.: "A -1"); a numeração se ajusta sozinha.</li>
+                <li><b>Divisória:</b> "Adicionar divisória" e clique nos <b>dois pontos</b> da divisa; a numeração da linha <b>recomeça do 1</b> ao cruzá-la (nomes repetidos entre seções são permitidos).</li>
                 <li><b>Numeração:</b> por proximidade, direita→esquerda ("Inverter" em cada linha).</li>
                 <li><b>Desfazer:</b> Ctrl+Z. <b>Esc</b> cancela a caixa/contorno em andamento.</li>
                 <li><b>Mover a tela:</b> botão do meio, <b>Espaço</b>+arrastar ou <b>Ctrl</b>+arrastar. <b>Zoom:</b> roda.</li>
@@ -92,6 +98,16 @@
     </div>
 
     <a href="index.html" id="home-link" title="Voltar ao menu de taludes">← Menu</a>
+
+    <!-- Mini-card para renomear ponto / linha / divisória -->
+    <div id="mini-card" class="hidden">
+        <span id="mini-card-label"></span>
+        <div class="mini-card-linha">
+            <input type="text" id="mini-card-input" maxlength="14" autocomplete="off">
+            <button id="mini-card-ok" title="Confirmar">✓</button>
+            <button id="mini-card-cancel" title="Cancelar">✕</button>
+        </div>
+    </div>
 
     <!-- Modal: montagem da prancha PDF -->
     <div id="pdf-modal" class="hidden">
