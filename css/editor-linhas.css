@@ -102,6 +102,19 @@ button.largo:hover { background-color: #5a6268; }
     user-select: none;
 }
 .check input { margin: 0; }
+
+.aviso {
+    margin-top: 8px;
+    font-size: 11px;
+    color: #8a5a00;
+    background: #fff3cd;
+    border: 1px solid #ffe69c;
+    border-radius: 6px;
+    padding: 6px 8px;
+    line-height: 1.4;
+}
+.aviso.hidden { display: none; }
+
 .cat-check { margin-bottom: 4px; }
 .cat-bola {
     width: 11px;
@@ -146,8 +159,10 @@ button.perigo:hover { background-color: #a93226; }
     border-radius: 8px;
     padding: 8px 10px;
     margin-bottom: 8px;
+    cursor: pointer;
     transition: border-color 0.15s ease, background-color 0.15s ease;
 }
+.linha-item:hover { border-color: #b9d8bd; background-color: rgba(55, 134, 64, 0.03); }
 .linha-item.ativa {
     border-color: #378640;
     background-color: rgba(55, 134, 64, 0.06);

@@ -30,8 +30,14 @@
         </div>
 
         <div class="bloco">
+            <button id="btn-detectar" class="largo">⚡ Linhas pré-definidas (pelo CSV)</button>
+            <div id="aviso-sem-nome" class="aviso hidden"></div>
+        </div>
+
+        <div class="bloco">
             <button id="btn-desfazer" class="largo">↶ Desfazer (Ctrl+Z)</button>
             <label class="check"><input type="checkbox" id="chk-mostrar-nomes"> Mostrar nomes</label>
+            <label class="check"><input type="checkbox" id="chk-flip"> Inverter vista (espelhar ↔)</label>
         </div>
 
         <div class="bloco">
@@ -56,7 +62,10 @@
         <details class="ajuda">
             <summary>Como usar</summary>
             <ul>
+                <li><b>Linhas pré-definidas:</b> agrupa os grampos automaticamente pelos nomes do CSV (ex.: A1, A2 → linha A).</li>
                 <li><b>Criar linha:</b> digite a letra e clique "Nova linha".</li>
+                <li><b>Selecionar linha:</b> clique no card da linha (painel à direita).</li>
+                <li><b>Inverter vista:</b> espelha o talude na horizontal (útil quando ele aparece de trás).</li>
                 <li><b>Contorno livre:</b> clique e <b>arraste</b> contornando os pontos; ao soltar, seleciona o que estiver dentro.</li>
                 <li><b>Caixa:</b> <b>clique</b> num ponto vazio (1º canto), mova e <b>clique de novo</b> (canto oposto) para fechar.</li>
                 <li><b>Um ponto:</b> clique nele para adicionar/remover.</li>
