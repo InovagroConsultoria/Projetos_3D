@@ -41,12 +41,14 @@ const view = { scale: 1, ox: 0, oy: 0 };
 let lines = [];
 let currentLineIndex = -1;
 
-// --- Divisórias (linhas pontilhadas que dividem o talude em seções) ---
+// --- Divisórias (polilinhas pontilhadas que dividem o talude em seções) ---
 // Guardadas em espaço de dados (h, elev) para serem estáveis a flip/exagero.
-let dividers = [];          // { name, h1, elev1, h2, elev2 }
+let dividers = [];          // { name, pts: [{h, elev}, ...] }
 let addingDivider = false;  // modo de inserção ativo
-let diviArmed = null;       // 1º ponto da divisória {h, elev}
+let diviPts = [];           // vértices da divisória em construção {h, elev}
 let diviMouse = null;       // posição do mouse em tela (preview)
+let draggingVertex = null;  // arrastando vértice de divisória pronta {di, vi, moved}
+const VERT_HIT_PX = 10;
 const PALETTE = ['#e6194B', '#3cb44b', '#4363d8', '#f58231', '#911eb4',
     '#42d4f4', '#f032e6', '#bfef45', '#fa64b4', '#469990', '#9A6324',
     '#800000', '#808000', '#000075', '#ff8c00', '#1e90ff', '#228B22', '#8b008b'];
@@ -184,10 +186,32 @@ function segmentosCruzam(a, b, c, d) {
     const ccw = (p, q, r) => (r.y - p.y) * (q.x - p.x) > (q.y - p.y) * (r.x - p.x);
     return ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d);
 }
-// O trecho entre dois pontos da linha cruza alguma divisória?
+// O trecho entre dois pontos da linha cruza alguma divisória (qualquer segmento dela)?
 function cruzaDivisoria(p1, p2) {
     const A = { x: p1.h, y: p1.elev }, B = { x: p2.h, y: p2.elev };
-    return dividers.some(d => segmentosCruzam(A, B, { x: d.h1, y: d.elev1 }, { x: d.h2, y: d.elev2 }));
+    for (const d of dividers) {
+        const v = d.pts;
+        for (let i = 0; i < v.length - 1; i++) {
+            if (segmentosCruzam(A, B, { x: v[i].h, y: v[i].elev }, { x: v[i + 1].h, y: v[i + 1].elev })) return true;
+        }
+    }
+    return false;
+}
+// Normaliza divisórias vindas do storage/undo (compatível com o formato antigo de segmento).
+function normalizarDivisorias(arr) {
+    return (arr || []).map(d => {
+        if (Array.isArray(d.pts)) return { name: d.name, pts: d.pts.map(p => ({ h: p.h, elev: p.elev })) };
+        return { name: d.name, pts: [{ h: d.h1, elev: d.elev1 }, { h: d.h2, elev: d.elev2 }] };
+    });
+}
+// Vértice de divisória pronta sob o cursor (tela) -> {di, vi} ou null.
+function verticeEm(mx, my) {
+    let melhor = null, melhorD = VERT_HIT_PX * VERT_HIT_PX;
+    dividers.forEach((d, di) => d.pts.forEach((p, vi) => {
+        const s = divParaTela(p.h, p.elev); const dx = s.x - mx, dy = s.y - my, dist = dx * dx + dy * dy;
+        if (dist <= melhorD) { melhorD = dist; melhor = { di, vi }; }
+    }));
+    return melhor;
 }
 
 function fitView() {
@@ -255,13 +279,17 @@ function draw() {
         ctx.strokeRect(x, y, Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
         ctx.setLineDash([]);
     }
-    // Divisórias (linha pontilhada com nome no pé)
+    // Divisórias (polilinha pontilhada com nome no pé + vértices arrastáveis)
     dividers.forEach(d => {
-        const a = divParaTela(d.h1, d.elev1), b = divParaTela(d.h2, d.elev2);
+        const tela = d.pts.map(p => divParaTela(p.h, p.elev));
+        if (tela.length < 2) return;
         ctx.setLineDash([9, 6]); ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
+        ctx.beginPath(); tela.forEach((s, i) => i === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y)); ctx.stroke();
+        ctx.setLineDash([]);
+        // vértices (alças)
+        tela.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 4.5, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.stroke(); });
         if (d.name) {
-            const pe = a.y >= b.y ? a : b; // pé = extremidade mais baixa na tela
+            const pe = tela.reduce((a, b) => b.y > a.y ? b : a); // pé = vértice mais baixo na tela
             ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
             const w = ctx.measureText(d.name).width;
             ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(pe.x - w / 2 - 4, pe.y + 6, w + 8, 18);
@@ -269,11 +297,14 @@ function draw() {
             ctx.textAlign = 'left';
         }
     });
-    // Preview da divisória em inserção
-    if (addingDivider && diviArmed && diviMouse) {
-        const a = divParaTela(diviArmed.h, diviArmed.elev);
+    // Preview da divisória em construção
+    if (addingDivider && diviPts.length) {
+        const tela = diviPts.map(p => divParaTela(p.h, p.elev));
         ctx.setLineDash([9, 6]); ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 2;
-        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(diviMouse.x, diviMouse.y); ctx.stroke(); ctx.setLineDash([]);
+        ctx.beginPath(); tela.forEach((s, i) => i === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y));
+        if (diviMouse) ctx.lineTo(diviMouse.x, diviMouse.y);
+        ctx.stroke(); ctx.setLineDash([]);
+        tela.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, Math.PI * 2); ctx.fillStyle = '#c0392b'; ctx.fill(); });
     }
 
     // Hover
@@ -299,7 +330,7 @@ function desfazer() {
     if (undoStack.length === 0) return;
     const d = JSON.parse(undoStack.pop());
     points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; });
-    dividers = Array.isArray(d.dividers) ? d.dividers : [];
+    dividers = normalizarDivisorias(d.dividers);
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
     lines = d.lines.map((l, li) => {
         const pts = l.pts.map(o => { const p = byRow[o.r]; if (p) { p.lineIndex = li; p.customName = o.c; } return p; }).filter(Boolean);
@@ -469,23 +500,27 @@ function posMudanca() { atualizarPainelLinhas(); atualizarPainelDivisorias(); at
 
 // --- Divisórias ---
 function alternarModoDivisoria() {
-    addingDivider = !addingDivider; diviArmed = null; diviMouse = null;
+    addingDivider = !addingDivider; diviPts = []; diviMouse = null;
     document.getElementById('btn-divisoria').classList.toggle('ativo', addingDivider);
-    canvas.style.cursor = addingDivider ? 'crosshair' : 'crosshair';
+    canvas.style.cursor = 'crosshair';
     atualizarStatus(); draw();
 }
-function adicionarDivisoria(a, b, screenX, screenY) {
+function finalizarDivisoria(screenX, screenY) {
+    if (diviPts.length < 2) { addingDivider = false; diviPts = []; document.getElementById('btn-divisoria').classList.remove('ativo'); atualizarStatus(); draw(); return; }
+    const pts = diviPts.map(p => ({ h: p.h, elev: p.elev }));
+    addingDivider = false; diviPts = []; diviMouse = null;
+    document.getElementById('btn-divisoria').classList.remove('ativo');
     pushUndo();
-    const d = { name: 'Divisa ' + (dividers.length + 1), h1: a.h, elev1: a.elev, h2: b.h, elev2: b.elev };
+    const d = { name: 'Divisa ' + (dividers.length + 1), pts };
     dividers.push(d);
-    lines.forEach(reordenarENumerar); posMudanca();
+    lines.forEach(renumerar); posMudanca();
     // abre o mini-card para nomear (cancelar mantém o nome padrão)
-    abrirMiniCard(screenX + 8, screenY, 'Nome da divisória (no pé)', d.name, (nome) => {
+    abrirMiniCard((screenX || window.innerWidth / 2) + 8, screenY || 120, 'Nome da divisória (no pé)', d.name, (nome) => {
         pushUndo(); d.name = (nome || '').trim() || d.name; posMudanca();
     });
 }
 function excluirDivisoria(di) {
-    pushUndo(); dividers.splice(di, 1); lines.forEach(reordenarENumerar); posMudanca();
+    pushUndo(); dividers.splice(di, 1); lines.forEach(renumerar); posMudanca();
 }
 function renomearDivisoria(di, ev) {
     const x = ev ? ev.clientX + 6 : window.innerWidth / 2, y = ev ? ev.clientY : 120;
@@ -569,7 +604,7 @@ function excluirLinha(li) {
 function atualizarStatus() {
     const atribuidos = points.filter(p => p.lineIndex != null).length;
     let html = `Pontos no arquivo: <b>${points.length}</b><br>Atribuídos a linhas: <b>${atribuidos}</b><br>Linhas: <b>${lines.length}</b> &middot; Divisórias: <b>${dividers.length}</b>`;
-    if (addingDivider) html = `<b style="color:#c0392b">Divisória:</b> clique no 1º e depois no 2º ponto da divisa. (Esc cancela)<br>` + html;
+    if (addingDivider) html = `<b style="color:#c0392b">Divisória:</b> clique para adicionar vértices; <b>duplo-clique</b> ou <b>Enter</b> conclui. (Esc cancela)<br>` + html;
     document.getElementById('status-barra').innerHTML = html;
 }
 
@@ -769,7 +804,7 @@ function restaurarAutosave() {
     let dados; try { dados = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return; }
     if (!dados || !dados.lines) return;
     if (dados.flipH) { flipH = true; const chk = document.getElementById('chk-flip'); if (chk) chk.checked = true; }
-    if (Array.isArray(dados.dividers)) dividers = dados.dividers;
+    if (Array.isArray(dados.dividers)) dividers = normalizarDivisorias(dados.dividers);
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
     lines = dados.lines.map((l, li) => {
         const pts = (l.pts || []).map(o => { const p = byRow[o.r]; if (p) { p.lineIndex = li; p.customName = o.c; } return p; }).filter(Boolean);
@@ -795,7 +830,7 @@ function pontoEm(mx, my) {
 function cancelarSelecao() {
     boxArmed = null; boxPreview = null; lasso = null;
     if (addingDivider) { addingDivider = false; document.getElementById('btn-divisoria').classList.remove('ativo'); }
-    diviArmed = null; diviMouse = null; atualizarStatus();
+    diviPts = []; diviMouse = null; atualizarStatus();
 }
 
 canvas.addEventListener('mousedown', (e) => {
@@ -803,6 +838,8 @@ canvas.addEventListener('mousedown', (e) => {
     if (e.button === 1 || spaceDown || e.ctrlKey) { pointer.down = true; pointer.panning = true; pointer.lastX = mx; pointer.lastY = my; e.preventDefault(); return; }
     if (e.button !== 0) return;
     if (addingDivider) { pointer.down = true; pointer.dragging = false; pointer.startX = mx; pointer.startY = my; e.preventDefault(); return; }
+    const vh = verticeEm(mx, my); // arrastar vértice de divisória pronta
+    if (vh) { draggingVertex = { di: vh.di, vi: vh.vi, moved: false }; pointer.down = true; e.preventDefault(); return; }
     pointer.down = true; pointer.dragging = false; pointer.startX = mx; pointer.startY = my; pointer.lastX = mx; pointer.lastY = my;
     pointer.downPoint = pontoEm(mx, my);
 });
@@ -810,6 +847,12 @@ canvas.addEventListener('mousedown', (e) => {
 canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     if (addingDivider) { diviMouse = { x: mx, y: my }; draw(); return; }
+    if (draggingVertex) {
+        if (!draggingVertex.moved) { pushUndo(); draggingVertex.moved = true; }
+        dividers[draggingVertex.di].pts[draggingVertex.vi] = telaParaDados(mx, my);
+        lines.forEach(renumerar); atualizarPainelLinhas(); atualizarStatus(); draw();
+        return;
+    }
     if (pointer.down && pointer.panning) { view.ox += mx - pointer.lastX; view.oy += my - pointer.lastY; pointer.lastX = mx; pointer.lastY = my; draw(); return; }
     if (pointer.down) {
         const movido = Math.abs(mx - pointer.startX) + Math.abs(my - pointer.startY);
@@ -824,7 +867,10 @@ canvas.addEventListener('mousemove', (e) => {
         const s0 = { x: boxArmed.wx * view.scale + view.ox, y: boxArmed.wy * view.scale + view.oy };
         boxPreview = { x0: s0.x, y0: s0.y, x1: mx, y1: my }; draw(); return;
     }
-    if (!pointer.down) { const h = pontoEm(mx, my); if (h !== hoveredPoint) { hoveredPoint = h; canvas.style.cursor = h ? 'pointer' : 'crosshair'; draw(); } }
+    if (!pointer.down) {
+        if (verticeEm(mx, my)) { canvas.style.cursor = 'grab'; if (hoveredPoint) { hoveredPoint = null; draw(); } return; }
+        const h = pontoEm(mx, my); if (h !== hoveredPoint) { hoveredPoint = h; canvas.style.cursor = h ? 'pointer' : 'crosshair'; draw(); }
+    }
 });
 
 window.addEventListener('mouseup', (e) => {
@@ -832,16 +878,13 @@ window.addEventListener('mouseup', (e) => {
     pointer.down = false;
     if (pointer.panning) { pointer.panning = false; return; }
 
-    // Inserção de divisória (dois cliques)
+    // Fim do arraste de um vértice de divisória
+    if (draggingVertex) { const moved = draggingVertex.moved; draggingVertex = null; if (moved) salvarAutosave(); return; }
+
+    // Inserção de divisória: cada clique adiciona um vértice
     if (addingDivider) {
         const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-        const dd = telaParaDados(mx, my);
-        if (!diviArmed) { diviArmed = dd; draw(); }
-        else {
-            const a = diviArmed; diviArmed = null; addingDivider = false;
-            document.getElementById('btn-divisoria').classList.remove('ativo');
-            adicionarDivisoria(a, dd, e.clientX, e.clientY);
-        }
+        diviPts.push(telaParaDados(mx, my)); draw();
         return;
     }
 
@@ -860,6 +903,19 @@ window.addEventListener('mouseup', (e) => {
 canvas.addEventListener('contextmenu', (e) => {
     e.preventDefault(); const rect = canvas.getBoundingClientRect();
     const p = pontoEm(e.clientX - rect.left, e.clientY - rect.top); if (p) editarPonto(p);
+});
+
+// Duplo-clique conclui a divisória em construção
+canvas.addEventListener('dblclick', (e) => {
+    if (!addingDivider) return;
+    e.preventDefault();
+    // o duplo-clique adicionou 2 vértices quase iguais no fim: remove o duplicado
+    if (diviPts.length >= 2) {
+        const a = divParaTela(diviPts[diviPts.length - 1].h, diviPts[diviPts.length - 1].elev);
+        const b = divParaTela(diviPts[diviPts.length - 2].h, diviPts[diviPts.length - 2].elev);
+        if (Math.hypot(a.x - b.x, a.y - b.y) < 6) diviPts.pop();
+    }
+    finalizarDivisoria(e.clientX, e.clientY);
 });
 
 canvas.addEventListener('wheel', (e) => {
@@ -882,6 +938,8 @@ window.addEventListener('keydown', (e) => {
         else if (e.key === 'Escape') { e.preventDefault(); fecharMiniCard(); }
         return;
     }
+    // Concluir a divisória em construção com Enter.
+    if (addingDivider && e.key === 'Enter') { e.preventDefault(); finalizarDivisoria(); return; }
     if (e.code === 'Space') { spaceDown = true; canvas.style.cursor = 'grab'; }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); desfazer(); }
     if (e.key === 'Escape') { cancelarSelecao(); draw(); }
