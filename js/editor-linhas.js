@@ -40,6 +40,13 @@ const view = { scale: 1, ox: 0, oy: 0 };
 // --- Linhas ---
 let lines = [];
 let currentLineIndex = -1;
+
+// --- Divisórias (linhas pontilhadas que dividem o talude em seções) ---
+// Guardadas em espaço de dados (h, elev) para serem estáveis a flip/exagero.
+let dividers = [];          // { name, h1, elev1, h2, elev2 }
+let addingDivider = false;  // modo de inserção ativo
+let diviArmed = null;       // 1º ponto da divisória {h, elev}
+let diviMouse = null;       // posição do mouse em tela (preview)
 const PALETTE = ['#e6194B', '#3cb44b', '#4363d8', '#f58231', '#911eb4',
     '#42d4f4', '#f032e6', '#bfef45', '#fa64b4', '#469990', '#9A6324',
     '#800000', '#808000', '#000075', '#ff8c00', '#1e90ff', '#228B22', '#8b008b'];
@@ -145,7 +152,7 @@ function iniciar(csvText) {
     restaurarAutosave();
     resizeCanvas();
     fitView();
-    atualizarPainelLinhas(); atualizarStatus(); draw();
+    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarStatus(); draw();
 
     const ls = document.getElementById('loading-screen');
     ls.classList.add('hidden'); setTimeout(() => { ls.style.display = 'none'; }, 400);
@@ -161,6 +168,27 @@ function worldY(p) { return -p.elev * exagero; }
 function toScreen(p) { return { x: worldX(p) * view.scale + view.ox, y: worldY(p) * view.scale + view.oy }; }
 function telaParaMundo(mx, my) { return { wx: (mx - view.ox) / view.scale, wy: (my - view.oy) / view.scale }; }
 function catVisivel(p) { return enabledCats.has(p.cat); }
+
+// Divisórias: (h, elev) -> tela (respeita flip e exagero, igual aos pontos).
+function divParaTela(h, elev) {
+    const wx = flipH ? -h : h, wy = -elev * exagero;
+    return { x: wx * view.scale + view.ox, y: wy * view.scale + view.oy };
+}
+// Mouse (tela) -> dados (h, elev), desfazendo flip e exagero.
+function telaParaDados(mx, my) {
+    const w = telaParaMundo(mx, my);
+    return { h: flipH ? -w.wx : w.wx, elev: -w.wy / exagero };
+}
+// Os segmentos AB e CD se cruzam? (em qualquer espaço afim — usamos (h, elev)).
+function segmentosCruzam(a, b, c, d) {
+    const ccw = (p, q, r) => (r.y - p.y) * (q.x - p.x) > (q.y - p.y) * (r.x - p.x);
+    return ccw(a, c, d) !== ccw(b, c, d) && ccw(a, b, c) !== ccw(a, b, d);
+}
+// O trecho entre dois pontos da linha cruza alguma divisória?
+function cruzaDivisoria(p1, p2) {
+    const A = { x: p1.h, y: p1.elev }, B = { x: p2.h, y: p2.elev };
+    return dividers.some(d => segmentosCruzam(A, B, { x: d.h1, y: d.elev1 }, { x: d.h2, y: d.elev2 }));
+}
 
 function fitView() {
     if (points.length === 0) return;
@@ -227,6 +255,27 @@ function draw() {
         ctx.strokeRect(x, y, Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
         ctx.setLineDash([]);
     }
+    // Divisórias (linha pontilhada com nome no pé)
+    dividers.forEach(d => {
+        const a = divParaTela(d.h1, d.elev1), b = divParaTela(d.h2, d.elev2);
+        ctx.setLineDash([9, 6]); ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke(); ctx.setLineDash([]);
+        if (d.name) {
+            const pe = a.y >= b.y ? a : b; // pé = extremidade mais baixa na tela
+            ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+            const w = ctx.measureText(d.name).width;
+            ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(pe.x - w / 2 - 4, pe.y + 6, w + 8, 18);
+            ctx.fillStyle = '#222'; ctx.fillText(d.name, pe.x, pe.y + 19);
+            ctx.textAlign = 'left';
+        }
+    });
+    // Preview da divisória em inserção
+    if (addingDivider && diviArmed && diviMouse) {
+        const a = divParaTela(diviArmed.h, diviArmed.elev);
+        ctx.setLineDash([9, 6]); ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(diviMouse.x, diviMouse.y); ctx.stroke(); ctx.setLineDash([]);
+    }
+
     // Hover
     if (hoveredPoint && catVisivel(hoveredPoint)) {
         const s = toScreen(hoveredPoint);
@@ -243,20 +292,21 @@ function draw() {
 //  Desfazer
 // =============================================================
 function snapshot() {
-    return JSON.stringify({ cur: currentLineIndex, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) });
+    return JSON.stringify({ cur: currentLineIndex, dividers, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) });
 }
 function pushUndo() { undoStack.push(snapshot()); if (undoStack.length > UNDO_MAX) undoStack.shift(); }
 function desfazer() {
     if (undoStack.length === 0) return;
     const d = JSON.parse(undoStack.pop());
     points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; });
+    dividers = Array.isArray(d.dividers) ? d.dividers : [];
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
     lines = d.lines.map((l, li) => {
         const pts = l.pts.map(o => { const p = byRow[o.r]; if (p) { p.lineIndex = li; p.customName = o.c; } return p; }).filter(Boolean);
         const line = { letra: l.letra, color: l.color, inverted: l.inverted, points: pts }; renumerar(line); return line;
     });
     currentLineIndex = (d.cur != null && d.cur < lines.length) ? d.cur : -1;
-    atualizarPainelLinhas(); atualizarStatus(); salvarAutosave(); draw();
+    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarStatus(); salvarAutosave(); draw();
 }
 
 // =============================================================
@@ -344,8 +394,12 @@ function ordenarLinha(line) {
     line.points = ordenado;
 }
 function renumerar(line) {
-    let contador = 1;
-    line.points.forEach(p => { if (p.customName) { p.name = p.customName; } else { p.name = line.letra + contador; contador++; } });
+    let contador = 1, prev = null;
+    line.points.forEach(p => {
+        if (prev && cruzaDivisoria(prev, p)) contador = 1; // recomeça após cruzar a divisa
+        if (p.customName) { p.name = p.customName; } else { p.name = line.letra + contador; contador++; }
+        prev = p;
+    });
 }
 function reordenarENumerar(line) { ordenarLinha(line); renumerar(line); }
 
@@ -384,13 +438,73 @@ function selecionarLasso(poly) {
     if (poly.length < 3) return;
     adicionarVarios(points.filter(p => p.lineIndex == null && catVisivel(p) && pontoEmPoligono(p, poly)));
 }
+// --- Mini-card (substitui prompt do navegador) ---
+let miniCardCb = null;
+function abrirMiniCard(screenX, screenY, label, valor, cb) {
+    const card = document.getElementById('mini-card');
+    const input = document.getElementById('mini-card-input');
+    document.getElementById('mini-card-label').textContent = label || '';
+    input.value = valor || '';
+    miniCardCb = cb;
+    card.classList.remove('hidden');
+    // posiciona dentro da tela
+    const w = card.offsetWidth, h = card.offsetHeight;
+    let x = Math.min(screenX, window.innerWidth - w - 8);
+    let y = Math.min(screenY, window.innerHeight - h - 8);
+    card.style.left = Math.max(8, x) + 'px';
+    card.style.top = Math.max(8, y) + 'px';
+    input.focus(); input.select();
+}
+function fecharMiniCard() { document.getElementById('mini-card').classList.add('hidden'); miniCardCb = null; }
+function confirmarMiniCard() { const v = document.getElementById('mini-card-input').value; const cb = miniCardCb; fecharMiniCard(); if (cb) cb(v); }
+
 function editarPonto(p) {
     if (p.lineIndex == null) { alert('Esse ponto ainda não está em nenhuma linha.'); return; }
-    const novo = prompt('Nome do ponto (vazio = automático):', p.customName || p.name || '');
-    if (novo == null) return;
-    pushUndo(); p.customName = novo.trim() || null; renumerar(lines[p.lineIndex]); posMudanca();
+    const s = toScreen(p);
+    abrirMiniCard(s.x + 14, s.y - 10, 'Nome do ponto (vazio = automático)', p.customName || p.name || '', (novo) => {
+        pushUndo(); p.customName = (novo || '').trim() || null; renumerar(lines[p.lineIndex]); posMudanca();
+    });
 }
-function posMudanca() { atualizarPainelLinhas(); atualizarStatus(); salvarAutosave(); draw(); }
+function posMudanca() { atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarStatus(); salvarAutosave(); draw(); }
+
+// --- Divisórias ---
+function alternarModoDivisoria() {
+    addingDivider = !addingDivider; diviArmed = null; diviMouse = null;
+    document.getElementById('btn-divisoria').classList.toggle('ativo', addingDivider);
+    canvas.style.cursor = addingDivider ? 'crosshair' : 'crosshair';
+    atualizarStatus(); draw();
+}
+function adicionarDivisoria(a, b, screenX, screenY) {
+    pushUndo();
+    const d = { name: 'Divisa ' + (dividers.length + 1), h1: a.h, elev1: a.elev, h2: b.h, elev2: b.elev };
+    dividers.push(d);
+    lines.forEach(reordenarENumerar); posMudanca();
+    // abre o mini-card para nomear (cancelar mantém o nome padrão)
+    abrirMiniCard(screenX + 8, screenY, 'Nome da divisória (no pé)', d.name, (nome) => {
+        pushUndo(); d.name = (nome || '').trim() || d.name; posMudanca();
+    });
+}
+function excluirDivisoria(di) {
+    pushUndo(); dividers.splice(di, 1); lines.forEach(reordenarENumerar); posMudanca();
+}
+function renomearDivisoria(di, ev) {
+    const x = ev ? ev.clientX + 6 : window.innerWidth / 2, y = ev ? ev.clientY : 120;
+    abrirMiniCard(x, y, 'Nome da divisória', dividers[di].name, (nome) => {
+        const n = (nome || '').trim(); if (!n) return;
+        pushUndo(); dividers[di].name = n; posMudanca();
+    });
+}
+function atualizarPainelDivisorias() {
+    const cont = document.getElementById('lista-divisorias'); if (!cont) return;
+    cont.innerHTML = '';
+    dividers.forEach((d, di) => {
+        const row = document.createElement('div'); row.className = 'divi-item';
+        row.innerHTML = `<span class="divi-nome" title="Renomear">⋮ ${escapeHtml(d.name)}</span><button title="Excluir">✕</button>`;
+        row.querySelector('.divi-nome').addEventListener('click', (e) => renomearDivisoria(di, e));
+        row.querySelector('button').addEventListener('click', () => excluirDivisoria(di));
+        cont.appendChild(row);
+    });
+}
 
 // =============================================================
 //  Painéis e filtros
@@ -431,16 +545,18 @@ function atualizarPainelLinhas() {
                 <button class="btn-mini btn-del">Excluir</button></div>`;
         div.addEventListener('click', () => { currentLineIndex = li; atualizarPainelLinhas(); draw(); });
         div.querySelector('.btn-inv').addEventListener('click', (e) => { e.stopPropagation(); inverterLinha(li); });
-        div.querySelector('.btn-ren').addEventListener('click', (e) => { e.stopPropagation(); renomearLinha(li); });
+        div.querySelector('.btn-ren').addEventListener('click', (e) => { e.stopPropagation(); renomearLinha(li, e); });
         div.querySelector('.btn-del').addEventListener('click', (e) => { e.stopPropagation(); excluirLinha(li); });
         cont.appendChild(div);
     });
 }
 function inverterLinha(li) { pushUndo(); lines[li].inverted = !lines[li].inverted; reordenarENumerar(lines[li]); posMudanca(); }
-function renomearLinha(li) {
-    const nova = prompt('Nova letra da linha:', lines[li].letra); if (nova == null) return;
-    const letra = nova.trim().toUpperCase(); if (!letra) return;
-    pushUndo(); lines[li].letra = letra; renumerar(lines[li]); posMudanca();
+function renomearLinha(li, ev) {
+    const x = ev ? ev.clientX + 6 : window.innerWidth / 2, y = ev ? ev.clientY : 120;
+    abrirMiniCard(x, y, 'Nova letra da linha', lines[li].letra, (nova) => {
+        const letra = (nova || '').trim().toUpperCase(); if (!letra) return;
+        pushUndo(); lines[li].letra = letra; renumerar(lines[li]); posMudanca();
+    });
 }
 function excluirLinha(li) {
     if (!confirm(`Excluir a linha ${lines[li].letra}?`)) return;
@@ -452,8 +568,9 @@ function excluirLinha(li) {
 }
 function atualizarStatus() {
     const atribuidos = points.filter(p => p.lineIndex != null).length;
-    document.getElementById('status-barra').innerHTML =
-        `Pontos no arquivo: <b>${points.length}</b><br>Atribuídos a linhas: <b>${atribuidos}</b><br>Linhas: <b>${lines.length}</b>`;
+    let html = `Pontos no arquivo: <b>${points.length}</b><br>Atribuídos a linhas: <b>${atribuidos}</b><br>Linhas: <b>${lines.length}</b> &middot; Divisórias: <b>${dividers.length}</b>`;
+    if (addingDivider) html = `<b style="color:#c0392b">Divisória:</b> clique no 1º e depois no 2º ponto da divisa. (Esc cancela)<br>` + html;
+    document.getElementById('status-barra').innerHTML = html;
 }
 
 // =============================================================
@@ -646,12 +763,13 @@ function ligarArrastePrancha() {
 //  Autosave
 // =============================================================
 function salvarAutosave() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, dividers, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
 }
 function restaurarAutosave() {
     let dados; try { dados = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return; }
     if (!dados || !dados.lines) return;
     if (dados.flipH) { flipH = true; const chk = document.getElementById('chk-flip'); if (chk) chk.checked = true; }
+    if (Array.isArray(dados.dividers)) dividers = dados.dividers;
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
     lines = dados.lines.map((l, li) => {
         const pts = (l.pts || []).map(o => { const p = byRow[o.r]; if (p) { p.lineIndex = li; p.customName = o.c; } return p; }).filter(Boolean);
@@ -660,8 +778,9 @@ function restaurarAutosave() {
     if (lines.length > 0) currentLineIndex = lines.length - 1;
 }
 function limparTudo() {
-    if (!confirm('Limpar todas as linhas?')) return;
-    pushUndo(); points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; }); lines = []; currentLineIndex = -1;
+    if (!confirm('Excluir todas as linhas e divisórias?')) return;
+    pushUndo(); points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; });
+    lines = []; dividers = []; currentLineIndex = -1;
     sugerirProximaLetra(); posMudanca();
 }
 
@@ -673,18 +792,24 @@ function pontoEm(mx, my) {
     points.forEach(p => { if (!catVisivel(p)) return; const s = toScreen(p); const dx = s.x - mx, dy = s.y - my, d = dx * dx + dy * dy; if (d <= melhorD) { melhorD = d; melhor = p; } });
     return melhor;
 }
-function cancelarSelecao() { boxArmed = null; boxPreview = null; lasso = null; }
+function cancelarSelecao() {
+    boxArmed = null; boxPreview = null; lasso = null;
+    if (addingDivider) { addingDivider = false; document.getElementById('btn-divisoria').classList.remove('ativo'); }
+    diviArmed = null; diviMouse = null; atualizarStatus();
+}
 
 canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     if (e.button === 1 || spaceDown || e.ctrlKey) { pointer.down = true; pointer.panning = true; pointer.lastX = mx; pointer.lastY = my; e.preventDefault(); return; }
     if (e.button !== 0) return;
+    if (addingDivider) { pointer.down = true; pointer.dragging = false; pointer.startX = mx; pointer.startY = my; e.preventDefault(); return; }
     pointer.down = true; pointer.dragging = false; pointer.startX = mx; pointer.startY = my; pointer.lastX = mx; pointer.lastY = my;
     pointer.downPoint = pontoEm(mx, my);
 });
 
 canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    if (addingDivider) { diviMouse = { x: mx, y: my }; draw(); return; }
     if (pointer.down && pointer.panning) { view.ox += mx - pointer.lastX; view.oy += my - pointer.lastY; pointer.lastX = mx; pointer.lastY = my; draw(); return; }
     if (pointer.down) {
         const movido = Math.abs(mx - pointer.startX) + Math.abs(my - pointer.startY);
@@ -706,6 +831,19 @@ window.addEventListener('mouseup', (e) => {
     if (!pointer.down) return;
     pointer.down = false;
     if (pointer.panning) { pointer.panning = false; return; }
+
+    // Inserção de divisória (dois cliques)
+    if (addingDivider) {
+        const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        const dd = telaParaDados(mx, my);
+        if (!diviArmed) { diviArmed = dd; draw(); }
+        else {
+            const a = diviArmed; diviArmed = null; addingDivider = false;
+            document.getElementById('btn-divisoria').classList.remove('ativo');
+            adicionarDivisoria(a, dd, e.clientX, e.clientY);
+        }
+        return;
+    }
 
     if (pointer.dragging && lasso) { const poly = lasso; lasso = null; selecionarLasso(poly); pointer.downPoint = null; pointer.dragging = false; return; }
 
@@ -738,6 +876,12 @@ window.addEventListener('keydown', (e) => {
     }
     const ajudaModal = document.getElementById('ajuda-modal');
     if (e.key === 'Escape' && !ajudaModal.classList.contains('hidden')) { ajudaModal.classList.add('hidden'); return; }
+    // Mini-card aberto: Enter confirma, Esc cancela (e não dispara atalhos do editor).
+    if (!document.getElementById('mini-card').classList.contains('hidden')) {
+        if (e.key === 'Enter') { e.preventDefault(); confirmarMiniCard(); }
+        else if (e.key === 'Escape') { e.preventDefault(); fecharMiniCard(); }
+        return;
+    }
     if (e.code === 'Space') { spaceDown = true; canvas.style.cursor = 'grab'; }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); desfazer(); }
     if (e.key === 'Escape') { cancelarSelecao(); draw(); }
@@ -750,6 +894,11 @@ window.addEventListener('resize', () => { resizeCanvas(); draw(); });
 // --- Controles ---
 document.getElementById('btn-desfazer').addEventListener('click', desfazer);
 document.getElementById('btn-detectar').addEventListener('click', detectarLinhas);
+document.getElementById('btn-divisoria').addEventListener('click', alternarModoDivisoria);
+
+// Mini-card de renomear
+document.getElementById('mini-card-ok').addEventListener('click', confirmarMiniCard);
+document.getElementById('mini-card-cancel').addEventListener('click', fecharMiniCard);
 
 // Modal "Como usar"
 const ajudaModal = document.getElementById('ajuda-modal');

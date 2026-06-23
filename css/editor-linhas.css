@@ -196,6 +196,54 @@ button.perigo:hover { background-color: #a93226; }
 }
 .ajuda-modal-inner li { margin-bottom: 8px; }
 
+/* --- Botão em modo ativo (ex.: adicionando divisória) --- */
+button.largo.ativo { background-color: #c0392b; }
+button.largo.ativo:hover { background-color: #a93226; }
+
+/* --- Lista de divisórias --- */
+#lista-divisorias { margin-top: 8px; }
+.divi-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: #444;
+    background: #f7f7f7;
+    border: 1px solid #e3e3e3;
+    border-radius: 6px;
+    padding: 5px 8px;
+    margin-bottom: 5px;
+}
+.divi-nome { flex-grow: 1; word-break: break-word; }
+.divi-item button { font-size: 11px; padding: 3px 7px; background-color: #c0392b; }
+.divi-item button:hover { background-color: #a93226; }
+
+/* --- Mini-card de renomear --- */
+#mini-card {
+    position: fixed;
+    z-index: 1100;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.25);
+    padding: 8px;
+    width: 190px;
+}
+#mini-card.hidden { display: none; }
+#mini-card-label { display: block; font-size: 11px; color: #666; margin-bottom: 5px; }
+.mini-card-linha { display: flex; gap: 5px; }
+#mini-card-input {
+    flex-grow: 1;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    font-size: 13px;
+}
+#mini-card-ok, #mini-card-cancel { padding: 6px 9px; font-size: 13px; }
+#mini-card-cancel { background-color: #6c757d; }
+#mini-card-cancel:hover { background-color: #5a6268; }
+
 /* --- Lista de linhas --- */
 .linha-item {
     border: 1px solid #e3e3e3;
