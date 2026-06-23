@@ -59,8 +59,16 @@
 
         <div id="status-barra"></div>
 
-        <details class="ajuda">
-            <summary>Como usar</summary>
+        <button id="btn-ajuda" class="largo">❓ Como usar</button>
+    </div>
+
+    <!-- Modal: como usar -->
+    <div id="ajuda-modal" class="hidden">
+        <div class="ajuda-modal-inner">
+            <div class="ajuda-modal-cabecalho">
+                <h3>Como usar</h3>
+                <button id="ajuda-fechar" title="Fechar">✕</button>
+            </div>
             <ul>
                 <li><b>Linhas pré-definidas:</b> agrupa os grampos automaticamente pelos nomes do CSV (ex.: A1, A2 → linha A).</li>
                 <li><b>Criar linha:</b> digite a letra e clique "Nova linha".</li>
@@ -74,7 +82,7 @@
                 <li><b>Desfazer:</b> Ctrl+Z. <b>Esc</b> cancela a caixa/contorno em andamento.</li>
                 <li><b>Mover a tela:</b> botão do meio, <b>Espaço</b>+arrastar ou <b>Ctrl</b>+arrastar. <b>Zoom:</b> roda.</li>
             </ul>
-        </details>
+        </div>
     </div>
 
     <!-- Painel de linhas (direita) -->
