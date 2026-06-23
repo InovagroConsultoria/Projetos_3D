@@ -31,6 +31,7 @@ let delimiter = ',';
 let points = [];         // { rowIndex, id, cat, h, elev, lineIndex, name, customName }
 let exagero = 1.0;
 let showNames = false;
+let flipH = false;       // espelha a vista na horizontal (talude visto de trás)
 let enabledCats = new Set(['outros']); // por padrão só os grampos de grade
 
 // --- Vista ---
@@ -88,6 +89,23 @@ function categoriaDe(id) {
     if (u.includes('VIGA')) return 'viga';
     return 'outros';
 }
+// Categorias de grampos que pertencem a "linhas" (grade e fechamento).
+const CATS_LINHA = new Set(['outros', 'grampofech']);
+// Deriva a letra/chave da linha a partir do nome do grampo no CSV.
+//  - Fechamento (GF*): a 3ª letra é a linha → "GFA-01" → "GFA".
+//  - Grade: prefixo de letras antes do número → "A1", "A-12", "AB 3" → "A"/"AB".
+//  - Sem padrão reconhecível (ex.: nome só numérico) → null.
+function chaveLinha(p) {
+    if (!CATS_LINHA.has(p.cat)) return null;
+    const u = (p.id || '').toUpperCase().trim();
+    if (p.cat === 'grampofech') {
+        return (u.length >= 3 && /[A-Z]/.test(u[2])) ? 'GF' + u[2] : null;
+    }
+    // Grade: prefixo curto (1–2 letras) seguido de número. Nomes longos
+    // como "POINT 1" não são linhas → ficam como "sem nome".
+    const m = u.match(/^([A-Z]{1,2})\s*-?\s*\d/);
+    return m ? m[1] : null;
+}
 function extrairCoords(parts) {
     if (parts.length >= 7) return { e: parseFloat(parts[4]), n: parseFloat(parts[5]), elev: parseFloat(parts[6]) };
     return { e: parseFloat(parts[1]), elev: parseFloat(parts[2]), n: parseFloat(parts[3]) };
@@ -123,6 +141,7 @@ function iniciar(csvText) {
     }));
 
     montarFiltroCategorias();
+    atualizarAvisoSemNome();
     restaurarAutosave();
     resizeCanvas();
     fitView();
@@ -137,7 +156,7 @@ function iniciar(csvText) {
 // =============================================================
 //  Projeção
 // =============================================================
-function worldX(p) { return p.h; }
+function worldX(p) { return flipH ? -p.h : p.h; }
 function worldY(p) { return -p.elev * exagero; }
 function toScreen(p) { return { x: worldX(p) * view.scale + view.ox, y: worldY(p) * view.scale + view.oy }; }
 function telaParaMundo(mx, my) { return { wx: (mx - view.ox) / view.scale, wy: (my - view.oy) / view.scale }; }
@@ -251,6 +270,56 @@ function novaLinha() {
     currentLineIndex = lines.length - 1; input.value = ''; sugerirProximaLetra();
     atualizarPainelLinhas(); salvarAutosave(); draw();
 }
+// Quantos grampos (grade/fechamento) estão sem nome de linha no CSV.
+function gramposSemNome() {
+    return points.filter(p => CATS_LINHA.has(p.cat) && !chaveLinha(p));
+}
+// Mostra/esconde o aviso de grampos sem nomenclatura.
+function atualizarAvisoSemNome() {
+    const box = document.getElementById('aviso-sem-nome');
+    const alvo = points.filter(p => CATS_LINHA.has(p.cat));
+    const sem = gramposSemNome();
+    if (alvo.length > 0 && sem.length === alvo.length) {
+        box.textContent = '⚠️ Os grampos deste CSV estão sem nome de linha. Não há como detectar linhas automaticamente — crie-as manualmente.';
+        box.classList.remove('hidden');
+    } else if (sem.length > 0) {
+        box.textContent = `⚠️ ${sem.length} grampo(s) sem nome de linha — não entram na detecção automática.`;
+        box.classList.remove('hidden');
+    } else {
+        box.classList.add('hidden');
+    }
+}
+
+// Agrupa os grampos em linhas a partir dos nomes do CSV original.
+function detectarLinhas() {
+    const alvo = points.filter(p => CATS_LINHA.has(p.cat));
+    if (alvo.length === 0) { alert('Não há grampos de grade ou de fechamento neste CSV.'); return; }
+    const comNome = alvo.filter(p => chaveLinha(p));
+    const semNome = alvo.length - comNome.length;
+    if (comNome.length === 0) {
+        alert('Os grampos deste CSV estão sem nomenclatura de linha (ex.: nomes só numéricos).\n\nNão é possível detectar linhas automaticamente — crie as linhas manualmente.');
+        return;
+    }
+    let msg = 'Detectar linhas pelos nomes do CSV?\n\nIsto substituirá todas as linhas atuais.';
+    if (semNome > 0) msg += `\n\n⚠️ ${semNome} grampo(s) sem nome ficarão de fora.`;
+    if (!confirm(msg)) return;
+
+    pushUndo();
+    points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; });
+    lines = [];
+    const grupos = {};
+    comNome.forEach(p => { const k = chaveLinha(p); (grupos[k] = grupos[k] || []).push(p); });
+    Object.keys(grupos).sort().forEach(k => {
+        const li = lines.length;
+        const line = { letra: k, color: PALETTE[li % PALETTE.length], inverted: false, points: grupos[k] };
+        grupos[k].forEach(p => { p.lineIndex = li; enabledCats.add(p.cat); });
+        lines.push(line); reordenarENumerar(line);
+    });
+    currentLineIndex = lines.length ? 0 : -1;
+    montarFiltroCategorias(); sugerirProximaLetra(); posMudanca();
+    alert(`${lines.length} linha(s) detectada(s) a partir do CSV.` + (semNome > 0 ? `\n${semNome} grampo(s) sem nome ficaram de fora.` : ''));
+}
+
 function proximaLetra() {
     const usadas = new Set(lines.map(l => l.letra));
     for (let c = 65; c <= 90; c++) { const L = String.fromCharCode(c); if (!usadas.has(L)) return L; }
@@ -264,7 +333,7 @@ function ordenarLinha(line) {
     const restante = pts.slice();
     let ini = 0;
     for (let i = 1; i < restante.length; i++) {
-        if (line.inverted ? restante[i].h < restante[ini].h : restante[i].h > restante[ini].h) ini = i;
+        if (line.inverted ? worldX(restante[i]) < worldX(restante[ini]) : worldX(restante[i]) > worldX(restante[ini])) ini = i;
     }
     const ordenado = [restante.splice(ini, 1)[0]];
     while (restante.length) {
@@ -349,6 +418,7 @@ function atualizarPainelLinhas() {
     lines.forEach((line, li) => {
         const div = document.createElement('div');
         div.className = 'linha-item' + (li === currentLineIndex ? ' ativa' : '');
+        div.title = 'Clique para selecionar esta linha';
         const nomes = line.points.map(p => p.name).join(', ') || '—';
         div.innerHTML = `<div class="linha-item-cabecalho">
                 <span class="linha-cor" style="background:${line.color}"></span>
@@ -356,14 +426,13 @@ function atualizarPainelLinhas() {
                 <span class="linha-contagem">${line.points.length} grampos</span></div>
             <div class="linha-nomes">${nomes}</div>
             <div class="linha-acoes">
-                <button class="btn-mini btn-sel">Selecionar</button>
                 <button class="btn-mini btn-inv">Inverter</button>
                 <button class="btn-mini btn-ren">Renomear</button>
                 <button class="btn-mini btn-del">Excluir</button></div>`;
-        div.querySelector('.btn-sel').addEventListener('click', () => { currentLineIndex = li; atualizarPainelLinhas(); draw(); });
-        div.querySelector('.btn-inv').addEventListener('click', () => inverterLinha(li));
-        div.querySelector('.btn-ren').addEventListener('click', () => renomearLinha(li));
-        div.querySelector('.btn-del').addEventListener('click', () => excluirLinha(li));
+        div.addEventListener('click', () => { currentLineIndex = li; atualizarPainelLinhas(); draw(); });
+        div.querySelector('.btn-inv').addEventListener('click', (e) => { e.stopPropagation(); inverterLinha(li); });
+        div.querySelector('.btn-ren').addEventListener('click', (e) => { e.stopPropagation(); renomearLinha(li); });
+        div.querySelector('.btn-del').addEventListener('click', (e) => { e.stopPropagation(); excluirLinha(li); });
         cont.appendChild(div);
     });
 }
@@ -577,11 +646,12 @@ function ligarArrastePrancha() {
 //  Autosave
 // =============================================================
 function salvarAutosave() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
 }
 function restaurarAutosave() {
     let dados; try { dados = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return; }
     if (!dados || !dados.lines) return;
+    if (dados.flipH) { flipH = true; const chk = document.getElementById('chk-flip'); if (chk) chk.checked = true; }
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
     lines = dados.lines.map((l, li) => {
         const pts = (l.pts || []).map(o => { const p = byRow[o.r]; if (p) { p.lineIndex = li; p.customName = o.c; } return p; }).filter(Boolean);
@@ -677,6 +747,7 @@ window.addEventListener('resize', () => { resizeCanvas(); draw(); });
 
 // --- Controles ---
 document.getElementById('btn-desfazer').addEventListener('click', desfazer);
+document.getElementById('btn-detectar').addEventListener('click', detectarLinhas);
 document.getElementById('btn-nova-linha').addEventListener('click', novaLinha);
 document.getElementById('input-letra').addEventListener('keydown', (e) => { if (e.key === 'Enter') novaLinha(); });
 document.getElementById('btn-enquadrar').addEventListener('click', () => { fitView(); draw(); });
@@ -697,6 +768,11 @@ el('pdf-orient').addEventListener('change', layoutPagina);
 });
 window.addEventListener('resize', () => { if (!el('pdf-modal').classList.contains('hidden')) layoutPagina(); });
 document.getElementById('chk-mostrar-nomes').addEventListener('change', (e) => { showNames = e.target.checked; draw(); });
+document.getElementById('chk-flip').addEventListener('change', (e) => {
+    flipH = e.target.checked;
+    lines.forEach(reordenarENumerar); // "direita" mudou: renumera por proximidade
+    fitView(); posMudanca();
+});
 document.getElementById('slider-exagero').addEventListener('input', (e) => {
     exagero = parseFloat(e.target.value); document.getElementById('valor-exagero').textContent = exagero.toFixed(1) + '×'; fitView(); draw();
 });
