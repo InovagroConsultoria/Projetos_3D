@@ -148,10 +148,53 @@ button.perigo:hover { background-color: #a93226; }
     line-height: 1.5;
 }
 
-.ajuda { font-size: 12px; color: #555; }
-.ajuda summary { cursor: pointer; font-weight: 600; color: #333; }
-.ajuda ul { margin: 8px 0 0 0; padding-left: 18px; }
-.ajuda li { margin-bottom: 4px; }
+/* --- Modal "Como usar" --- */
+#ajuda-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+#ajuda-modal.hidden { display: none; }
+.ajuda-modal-inner {
+    background: #fff;
+    border-radius: 12px;
+    width: 460px;
+    max-width: 100%;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+}
+.ajuda-modal-cabecalho {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid #eee;
+}
+.ajuda-modal-cabecalho h3 { margin: 0; font-size: 16px; color: #333; }
+#ajuda-fechar {
+    background: transparent;
+    color: #888;
+    font-size: 16px;
+    padding: 2px 8px;
+    line-height: 1;
+}
+#ajuda-fechar:hover { background: #f0f0f0; color: #333; }
+.ajuda-modal-inner ul {
+    margin: 0;
+    padding: 14px 18px 18px 36px;
+    overflow-y: auto;
+    font-size: 13px;
+    color: #444;
+    line-height: 1.5;
+}
+.ajuda-modal-inner li { margin-bottom: 8px; }
 
 /* --- Lista de linhas --- */
 .linha-item {

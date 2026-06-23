@@ -736,6 +736,8 @@ window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') fecharPdfModal();
         return;
     }
+    const ajudaModal = document.getElementById('ajuda-modal');
+    if (e.key === 'Escape' && !ajudaModal.classList.contains('hidden')) { ajudaModal.classList.add('hidden'); return; }
     if (e.code === 'Space') { spaceDown = true; canvas.style.cursor = 'grab'; }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); desfazer(); }
     if (e.key === 'Escape') { cancelarSelecao(); draw(); }
@@ -748,6 +750,12 @@ window.addEventListener('resize', () => { resizeCanvas(); draw(); });
 // --- Controles ---
 document.getElementById('btn-desfazer').addEventListener('click', desfazer);
 document.getElementById('btn-detectar').addEventListener('click', detectarLinhas);
+
+// Modal "Como usar"
+const ajudaModal = document.getElementById('ajuda-modal');
+document.getElementById('btn-ajuda').addEventListener('click', () => ajudaModal.classList.remove('hidden'));
+document.getElementById('ajuda-fechar').addEventListener('click', () => ajudaModal.classList.add('hidden'));
+ajudaModal.addEventListener('click', (e) => { if (e.target === ajudaModal) ajudaModal.classList.add('hidden'); });
 document.getElementById('btn-nova-linha').addEventListener('click', novaLinha);
 document.getElementById('input-letra').addEventListener('keydown', (e) => { if (e.key === 'Enter') novaLinha(); });
 document.getElementById('btn-enquadrar').addEventListener('click', () => { fitView(); draw(); });
