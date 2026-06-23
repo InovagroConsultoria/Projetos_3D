@@ -28,7 +28,8 @@ CATS.forEach(c => { CAT_COLOR[c.key] = c.color; CAT_LABEL[c.key] = c.label; });
 // --- Dados ---
 let originalRows = [];
 let delimiter = ',';
-let points = [];         // { rowIndex, id, cat, h, elev, lineIndex, name, customName }
+let points = [];         // { rowIndex, id, cat, e, n, hPCA, h, elev, lineIndex, name, customName }
+let mE = 0, mN = 0;      // centro (média) de E/N — usado nas projeções
 let exagero = 1.0;
 let showNames = false;
 let flipH = false;       // espelha a vista na horizontal (talude visto de trás)
@@ -36,6 +37,12 @@ let enabledCats = new Set(['outros']); // por padrão só os grampos de grade
 
 // --- Vista ---
 const view = { scale: 1, ox: 0, oy: 0 };
+let topView = false;     // vista de topo (plano E×N) — para desenhar o eixo-guia
+
+// --- Eixo-guia (curva que "desenrola" taludes curvos por estaqueamento) ---
+let guide = [];          // vértices em coordenadas reais {e, n}
+let addingGuide = false; // modo de desenho do eixo-guia (na vista de topo)
+let guiaPts = [];        // vértices do eixo-guia em construção {e, n}
 
 // --- Linhas ---
 let lines = [];
@@ -137,24 +144,28 @@ function iniciar(csvText) {
     if (brutos.length === 0) { showError('Nenhum ponto válido neste CSV.'); return; }
 
     // Eixo horizontal principal (PCA sobre E,N).
-    let mE = 0, mN = 0; brutos.forEach(p => { mE += p.e; mN += p.n; }); mE /= brutos.length; mN /= brutos.length;
+    mE = 0; mN = 0; brutos.forEach(p => { mE += p.e; mN += p.n; }); mE /= brutos.length; mN /= brutos.length;
     let sxx = 0, syy = 0, sxy = 0;
     brutos.forEach(p => { const de = p.e - mE, dn = p.n - mN; sxx += de * de; syy += dn * dn; sxy += de * dn; });
     const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
     const ux = Math.cos(ang), uy = Math.sin(ang);
 
-    points = brutos.map(p => ({
-        rowIndex: p.rowIndex, id: p.id, cat: p.cat,
-        h: (p.e - mE) * ux + (p.n - mN) * uy, elev: p.elev,
-        lineIndex: null, name: null, customName: null,
-    }));
+    points = brutos.map(p => {
+        const hPCA = (p.e - mE) * ux + (p.n - mN) * uy;
+        return {
+            rowIndex: p.rowIndex, id: p.id, cat: p.cat, e: p.e, n: p.n,
+            hPCA, h: hPCA, elev: p.elev,
+            lineIndex: null, name: null, customName: null,
+        };
+    });
 
     montarFiltroCategorias();
     atualizarAvisoSemNome();
     restaurarAutosave();
+    aplicarGuia(); // se houver eixo-guia salvo, reprojeta por estaqueamento
     resizeCanvas();
     fitView();
-    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarStatus(); draw();
+    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarStatus(); draw();
 
     const ls = document.getElementById('loading-screen');
     ls.classList.add('hidden'); setTimeout(() => { ls.style.display = 'none'; }, 400);
@@ -165,11 +176,39 @@ function iniciar(csvText) {
 // =============================================================
 //  Projeção
 // =============================================================
-function worldX(p) { return flipH ? -p.h : p.h; }
-function worldY(p) { return -p.elev * exagero; }
+function worldX(p) { return topView ? (p.e - mE) : (flipH ? -p.h : p.h); }
+function worldY(p) { return topView ? -(p.n - mN) : -p.elev * exagero; }
 function toScreen(p) { return { x: worldX(p) * view.scale + view.ox, y: worldY(p) * view.scale + view.oy }; }
 function telaParaMundo(mx, my) { return { wx: (mx - view.ox) / view.scale, wy: (my - view.oy) / view.scale }; }
 function catVisivel(p) { return enabledCats.has(p.cat); }
+
+// --- Vista de topo / eixo-guia ---
+// (E, N) reais -> tela (na vista de topo).
+function enParaTela(e, n) { return { x: (e - mE) * view.scale + view.ox, y: -(n - mN) * view.scale + view.oy }; }
+// Mouse (tela) -> (E, N) reais (na vista de topo).
+function telaParaEN(mx, my) { const w = telaParaMundo(mx, my); return { e: w.wx + mE, n: mN - w.wy }; }
+// Estaqueamento: distância ao longo do eixo-guia até a projeção do ponto.
+function chainage(e, n) {
+    if (guide.length < 2) return 0;
+    let bestD = Infinity, bestS = 0, acc = 0;
+    for (let i = 0; i < guide.length - 1; i++) {
+        const a = guide[i], b = guide[i + 1];
+        const abe = b.e - a.e, abn = b.n - a.n, len2 = abe * abe + abn * abn, len = Math.sqrt(len2);
+        let t = len2 > 0 ? ((e - a.e) * abe + (n - a.n) * abn) / len2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const px = a.e + t * abe, pn = a.n + t * abn, dx = e - px, dn = n - pn, d = dx * dx + dn * dn;
+        if (d < bestD) { bestD = d; bestS = acc + len * t; }
+        acc += len;
+    }
+    return bestS;
+}
+// Recalcula a coordenada horizontal (h) de cada ponto: estaqueamento se houver
+// eixo-guia, senão o PCA original. Reordena/renumera as linhas.
+function aplicarGuia() {
+    const usar = guide.length >= 2;
+    points.forEach(p => { p.h = usar ? chainage(p.e, p.n) : p.hPCA; });
+    lines.forEach(reordenarENumerar);
+}
 
 // Divisórias: (h, elev) -> tela (respeita flip e exagero, igual aos pontos).
 function divParaTela(h, elev) {
@@ -279,32 +318,52 @@ function draw() {
         ctx.strokeRect(x, y, Math.abs(b.x1 - b.x0), Math.abs(b.y1 - b.y0));
         ctx.setLineDash([]);
     }
-    // Divisórias (polilinha pontilhada com nome no pé + vértices arrastáveis)
-    dividers.forEach(d => {
-        const tela = d.pts.map(p => divParaTela(p.h, p.elev));
-        if (tela.length < 2) return;
-        ctx.setLineDash([9, 6]); ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
-        ctx.beginPath(); tela.forEach((s, i) => i === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y)); ctx.stroke();
-        ctx.setLineDash([]);
-        // vértices (alças)
-        tela.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 4.5, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.stroke(); });
-        if (d.name) {
-            const pe = tela.reduce((a, b) => b.y > a.y ? b : a); // pé = vértice mais baixo na tela
-            ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
-            const w = ctx.measureText(d.name).width;
-            ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(pe.x - w / 2 - 4, pe.y + 6, w + 8, 18);
-            ctx.fillStyle = '#222'; ctx.fillText(d.name, pe.x, pe.y + 19);
-            ctx.textAlign = 'left';
+    // Divisórias só na vista frontal (são definidas no espaço h×elev).
+    if (!topView) {
+        dividers.forEach(d => {
+            const tela = d.pts.map(p => divParaTela(p.h, p.elev));
+            if (tela.length < 2) return;
+            ctx.setLineDash([9, 6]); ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+            ctx.beginPath(); tela.forEach((s, i) => i === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y)); ctx.stroke();
+            ctx.setLineDash([]);
+            tela.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 4.5, 0, Math.PI * 2); ctx.fillStyle = '#fff'; ctx.fill(); ctx.strokeStyle = '#333'; ctx.lineWidth = 1.5; ctx.stroke(); });
+            if (d.name) {
+                const pe = tela.reduce((a, b) => b.y > a.y ? b : a); // pé = vértice mais baixo na tela
+                ctx.font = 'bold 13px sans-serif'; ctx.textAlign = 'center';
+                const w = ctx.measureText(d.name).width;
+                ctx.fillStyle = 'rgba(255,255,255,0.85)'; ctx.fillRect(pe.x - w / 2 - 4, pe.y + 6, w + 8, 18);
+                ctx.fillStyle = '#222'; ctx.fillText(d.name, pe.x, pe.y + 19);
+                ctx.textAlign = 'left';
+            }
+        });
+        if (addingDivider && diviPts.length) {
+            const tela = diviPts.map(p => divParaTela(p.h, p.elev));
+            ctx.setLineDash([9, 6]); ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 2;
+            ctx.beginPath(); tela.forEach((s, i) => i === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y));
+            if (diviMouse) ctx.lineTo(diviMouse.x, diviMouse.y);
+            ctx.stroke(); ctx.setLineDash([]);
+            tela.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, Math.PI * 2); ctx.fillStyle = '#c0392b'; ctx.fill(); });
         }
-    });
-    // Preview da divisória em construção
-    if (addingDivider && diviPts.length) {
-        const tela = diviPts.map(p => divParaTela(p.h, p.elev));
-        ctx.setLineDash([9, 6]); ctx.strokeStyle = '#c0392b'; ctx.lineWidth = 2;
-        ctx.beginPath(); tela.forEach((s, i) => i === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y));
-        if (diviMouse) ctx.lineTo(diviMouse.x, diviMouse.y);
-        ctx.stroke(); ctx.setLineDash([]);
-        tela.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, Math.PI * 2); ctx.fillStyle = '#c0392b'; ctx.fill(); });
+    }
+
+    // Eixo-guia só na vista de topo.
+    if (topView) {
+        if (guide.length >= 2) {
+            const tela = guide.map(g => enParaTela(g.e, g.n));
+            ctx.strokeStyle = '#0a7d4b'; ctx.lineWidth = 3;
+            ctx.beginPath(); tela.forEach((s, i) => i === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y)); ctx.stroke();
+            tela.forEach((s, i) => { ctx.beginPath(); ctx.arc(s.x, s.y, 5, 0, Math.PI * 2); ctx.fillStyle = i === 0 ? '#0a7d4b' : '#fff'; ctx.fill(); ctx.strokeStyle = '#0a7d4b'; ctx.lineWidth = 2; ctx.stroke(); });
+            // marca o início (estaca 0)
+            ctx.fillStyle = '#0a7d4b'; ctx.font = 'bold 12px sans-serif'; ctx.fillText('início', tela[0].x + 8, tela[0].y - 8);
+        }
+        if (addingGuide && guiaPts.length) {
+            const tela = guiaPts.map(g => enParaTela(g.e, g.n));
+            ctx.strokeStyle = '#0a7d4b'; ctx.lineWidth = 3;
+            ctx.beginPath(); tela.forEach((s, i) => i === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y));
+            if (diviMouse) ctx.lineTo(diviMouse.x, diviMouse.y);
+            ctx.stroke();
+            tela.forEach(s => { ctx.beginPath(); ctx.arc(s.x, s.y, 4, 0, Math.PI * 2); ctx.fillStyle = '#0a7d4b'; ctx.fill(); });
+        }
     }
 
     // Hover
@@ -323,7 +382,7 @@ function draw() {
 //  Desfazer
 // =============================================================
 function snapshot() {
-    return JSON.stringify({ cur: currentLineIndex, dividers, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) });
+    return JSON.stringify({ cur: currentLineIndex, dividers, guide, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) });
 }
 function pushUndo() { undoStack.push(snapshot()); if (undoStack.length > UNDO_MAX) undoStack.shift(); }
 function desfazer() {
@@ -331,13 +390,15 @@ function desfazer() {
     const d = JSON.parse(undoStack.pop());
     points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; });
     dividers = normalizarDivisorias(d.dividers);
+    guide = Array.isArray(d.guide) ? d.guide : [];
+    points.forEach(p => { p.h = guide.length >= 2 ? chainage(p.e, p.n) : p.hPCA; });
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
     lines = d.lines.map((l, li) => {
         const pts = l.pts.map(o => { const p = byRow[o.r]; if (p) { p.lineIndex = li; p.customName = o.c; } return p; }).filter(Boolean);
         const line = { letra: l.letra, color: l.color, inverted: l.inverted, points: pts }; renumerar(line); return line;
     });
     currentLineIndex = (d.cur != null && d.cur < lines.length) ? d.cur : -1;
-    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarStatus(); salvarAutosave(); draw();
+    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarStatus(); salvarAutosave(); draw();
 }
 
 // =============================================================
@@ -496,7 +557,49 @@ function editarPonto(p) {
         pushUndo(); p.customName = (novo || '').trim() || null; renumerar(lines[p.lineIndex]); posMudanca();
     });
 }
-function posMudanca() { atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarStatus(); salvarAutosave(); draw(); }
+function posMudanca() { atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarStatus(); salvarAutosave(); draw(); }
+
+// --- Vista de topo / eixo-guia ---
+function alternarVistaTopo() {
+    topView = !topView;
+    if (!topView && addingGuide) { addingGuide = false; guiaPts = []; document.getElementById('btn-guia').classList.remove('ativo'); }
+    document.getElementById('btn-topo').classList.toggle('ativo', topView);
+    document.getElementById('btn-guia').style.display = topView ? '' : 'none';
+    hoveredPoint = null; fitView(); atualizarStatus(); draw();
+}
+function alternarModoGuia() {
+    if (!topView) alternarVistaTopo(); // o eixo-guia é desenhado na vista de topo
+    addingGuide = !addingGuide; guiaPts = []; diviMouse = null;
+    document.getElementById('btn-guia').classList.toggle('ativo', addingGuide);
+    canvas.style.cursor = 'crosshair';
+    atualizarStatus(); draw();
+}
+function finalizarGuia() {
+    if (guiaPts.length < 2) { addingGuide = false; guiaPts = []; document.getElementById('btn-guia').classList.remove('ativo'); atualizarStatus(); draw(); return; }
+    pushUndo();
+    guide = guiaPts.map(g => ({ e: g.e, n: g.n }));
+    addingGuide = false; guiaPts = []; diviMouse = null;
+    document.getElementById('btn-guia').classList.remove('ativo');
+    aplicarGuia();
+    // volta para a vista frontal já "desenrolada"
+    topView = false; document.getElementById('btn-topo').classList.remove('ativo');
+    document.getElementById('btn-guia').style.display = 'none';
+    fitView(); posMudanca();
+}
+function removerGuia() {
+    if (!guide.length) return;
+    if (!confirm('Remover o eixo-guia? A vista volta ao eixo reto (PCA).')) return;
+    pushUndo(); guide = []; aplicarGuia(); fitView(); posMudanca();
+}
+function atualizarPainelGuia() {
+    const box = document.getElementById('guia-status'); if (!box) return;
+    if (guide.length >= 2) {
+        box.innerHTML = `<span class="guia-ok">✓ Eixo-guia ativo (${guide.length} vértices)</span> <button id="btn-remover-guia" class="btn-mini" title="Remover">✕</button>`;
+        const b = document.getElementById('btn-remover-guia'); if (b) b.addEventListener('click', removerGuia);
+    } else {
+        box.innerHTML = '<small>Sem eixo-guia (eixo reto). Use em taludes em curva.</small>';
+    }
+}
 
 // --- Divisórias ---
 function alternarModoDivisoria() {
@@ -605,6 +708,8 @@ function atualizarStatus() {
     const atribuidos = points.filter(p => p.lineIndex != null).length;
     let html = `Pontos no arquivo: <b>${points.length}</b><br>Atribuídos a linhas: <b>${atribuidos}</b><br>Linhas: <b>${lines.length}</b> &middot; Divisórias: <b>${dividers.length}</b>`;
     if (addingDivider) html = `<b style="color:#c0392b">Divisória:</b> clique para adicionar vértices; <b>duplo-clique</b> ou <b>Enter</b> conclui. (Esc cancela)<br>` + html;
+    else if (addingGuide) html = `<b style="color:#0a7d4b">Eixo-guia:</b> clique seguindo a curva do talude (de uma ponta à outra); <b>duplo-clique</b> ou <b>Enter</b> conclui. (Esc cancela)<br>` + html;
+    else if (topView) html = `<b style="color:#0a7d4b">Vista de topo</b> — desenhe o eixo-guia ou volte à vista frontal.<br>` + html;
     document.getElementById('status-barra').innerHTML = html;
 }
 
@@ -798,13 +903,14 @@ function ligarArrastePrancha() {
 //  Autosave
 // =============================================================
 function salvarAutosave() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, dividers, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, dividers, guide, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
 }
 function restaurarAutosave() {
     let dados; try { dados = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return; }
     if (!dados || !dados.lines) return;
     if (dados.flipH) { flipH = true; const chk = document.getElementById('chk-flip'); if (chk) chk.checked = true; }
     if (Array.isArray(dados.dividers)) dividers = normalizarDivisorias(dados.dividers);
+    if (Array.isArray(dados.guide)) guide = dados.guide.map(g => ({ e: g.e, n: g.n }));
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
     lines = dados.lines.map((l, li) => {
         const pts = (l.pts || []).map(o => { const p = byRow[o.r]; if (p) { p.lineIndex = li; p.customName = o.c; } return p; }).filter(Boolean);
@@ -830,14 +936,17 @@ function pontoEm(mx, my) {
 function cancelarSelecao() {
     boxArmed = null; boxPreview = null; lasso = null;
     if (addingDivider) { addingDivider = false; document.getElementById('btn-divisoria').classList.remove('ativo'); }
-    diviPts = []; diviMouse = null; atualizarStatus();
+    if (addingGuide) { addingGuide = false; document.getElementById('btn-guia').classList.remove('ativo'); }
+    diviPts = []; guiaPts = []; diviMouse = null; atualizarStatus();
 }
 
 canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     if (e.button === 1 || spaceDown || e.ctrlKey) { pointer.down = true; pointer.panning = true; pointer.lastX = mx; pointer.lastY = my; e.preventDefault(); return; }
     if (e.button !== 0) return;
-    if (addingDivider) { pointer.down = true; pointer.dragging = false; pointer.startX = mx; pointer.startY = my; e.preventDefault(); return; }
+    if (addingDivider || addingGuide) { pointer.down = true; pointer.dragging = false; pointer.startX = mx; pointer.startY = my; e.preventDefault(); return; }
+    // Na vista de topo (sem desenhar guia) o botão esquerdo só faz pan; sem atribuição de pontos.
+    if (topView) { pointer.down = true; pointer.panning = true; pointer.lastX = mx; pointer.lastY = my; e.preventDefault(); return; }
     const vh = verticeEm(mx, my); // arrastar vértice de divisória pronta
     if (vh) { draggingVertex = { di: vh.di, vi: vh.vi, moved: false }; pointer.down = true; e.preventDefault(); return; }
     pointer.down = true; pointer.dragging = false; pointer.startX = mx; pointer.startY = my; pointer.lastX = mx; pointer.lastY = my;
@@ -846,7 +955,7 @@ canvas.addEventListener('mousedown', (e) => {
 
 canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    if (addingDivider) { diviMouse = { x: mx, y: my }; draw(); return; }
+    if (addingDivider || addingGuide) { diviMouse = { x: mx, y: my }; draw(); return; }
     if (draggingVertex) {
         if (!draggingVertex.moved) { pushUndo(); draggingVertex.moved = true; }
         dividers[draggingVertex.di].pts[draggingVertex.vi] = telaParaDados(mx, my);
@@ -887,6 +996,12 @@ window.addEventListener('mouseup', (e) => {
         diviPts.push(telaParaDados(mx, my)); draw();
         return;
     }
+    // Desenho do eixo-guia (vista de topo): cada clique adiciona um vértice
+    if (addingGuide) {
+        const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+        guiaPts.push(telaParaEN(mx, my)); draw();
+        return;
+    }
 
     if (pointer.dragging && lasso) { const poly = lasso; lasso = null; selecionarLasso(poly); pointer.downPoint = null; pointer.dragging = false; return; }
 
@@ -905,17 +1020,29 @@ canvas.addEventListener('contextmenu', (e) => {
     const p = pontoEm(e.clientX - rect.left, e.clientY - rect.top); if (p) editarPonto(p);
 });
 
-// Duplo-clique conclui a divisória em construção
+// Duplo-clique conclui a divisória ou o eixo-guia em construção
 canvas.addEventListener('dblclick', (e) => {
-    if (!addingDivider) return;
-    e.preventDefault();
-    // o duplo-clique adicionou 2 vértices quase iguais no fim: remove o duplicado
-    if (diviPts.length >= 2) {
-        const a = divParaTela(diviPts[diviPts.length - 1].h, diviPts[diviPts.length - 1].elev);
-        const b = divParaTela(diviPts[diviPts.length - 2].h, diviPts[diviPts.length - 2].elev);
-        if (Math.hypot(a.x - b.x, a.y - b.y) < 6) diviPts.pop();
+    if (addingDivider) {
+        e.preventDefault();
+        // o duplo-clique adicionou 2 vértices quase iguais no fim: remove o duplicado
+        if (diviPts.length >= 2) {
+            const a = divParaTela(diviPts[diviPts.length - 1].h, diviPts[diviPts.length - 1].elev);
+            const b = divParaTela(diviPts[diviPts.length - 2].h, diviPts[diviPts.length - 2].elev);
+            if (Math.hypot(a.x - b.x, a.y - b.y) < 6) diviPts.pop();
+        }
+        finalizarDivisoria(e.clientX, e.clientY);
+        return;
     }
-    finalizarDivisoria(e.clientX, e.clientY);
+    if (addingGuide) {
+        e.preventDefault();
+        if (guiaPts.length >= 2) {
+            const a = enParaTela(guiaPts[guiaPts.length - 1].e, guiaPts[guiaPts.length - 1].n);
+            const b = enParaTela(guiaPts[guiaPts.length - 2].e, guiaPts[guiaPts.length - 2].n);
+            if (Math.hypot(a.x - b.x, a.y - b.y) < 6) guiaPts.pop();
+        }
+        finalizarGuia();
+        return;
+    }
 });
 
 canvas.addEventListener('wheel', (e) => {
@@ -938,8 +1065,9 @@ window.addEventListener('keydown', (e) => {
         else if (e.key === 'Escape') { e.preventDefault(); fecharMiniCard(); }
         return;
     }
-    // Concluir a divisória em construção com Enter.
+    // Concluir a divisória / o eixo-guia em construção com Enter.
     if (addingDivider && e.key === 'Enter') { e.preventDefault(); finalizarDivisoria(); return; }
+    if (addingGuide && e.key === 'Enter') { e.preventDefault(); finalizarGuia(); return; }
     if (e.code === 'Space') { spaceDown = true; canvas.style.cursor = 'grab'; }
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); desfazer(); }
     if (e.key === 'Escape') { cancelarSelecao(); draw(); }
@@ -953,6 +1081,8 @@ window.addEventListener('resize', () => { resizeCanvas(); draw(); });
 document.getElementById('btn-desfazer').addEventListener('click', desfazer);
 document.getElementById('btn-detectar').addEventListener('click', detectarLinhas);
 document.getElementById('btn-divisoria').addEventListener('click', alternarModoDivisoria);
+document.getElementById('btn-topo').addEventListener('click', alternarVistaTopo);
+document.getElementById('btn-guia').addEventListener('click', alternarModoGuia);
 
 // Mini-card de renomear
 document.getElementById('mini-card-ok').addEventListener('click', confirmarMiniCard);

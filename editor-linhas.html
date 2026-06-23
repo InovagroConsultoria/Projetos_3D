@@ -46,6 +46,12 @@
         </div>
 
         <div class="bloco">
+            <button id="btn-topo" class="largo">🗺️ Vista de topo</button>
+            <button id="btn-guia" class="largo" style="display:none">📐 Desenhar eixo-guia</button>
+            <div id="guia-status"></div>
+        </div>
+
+        <div class="bloco">
             <label>Categorias visíveis</label>
             <div id="filtro-categorias"></div>
         </div>
@@ -83,7 +89,8 @@
                 <li><b>Caixa:</b> <b>clique</b> num ponto vazio (1º canto), mova e <b>clique de novo</b> (canto oposto) para fechar.</li>
                 <li><b>Um ponto:</b> clique nele para adicionar/remover.</li>
                 <li><b>Renomear um ponto:</b> <b>botão direito</b> abre um mini-card (ex.: "A -1"); a numeração se ajusta sozinha.</li>
-                <li><b>Divisória:</b> "Adicionar divisória" e clique nos <b>dois pontos</b> da divisa; a numeração da linha <b>recomeça do 1</b> ao cruzá-la (nomes repetidos entre seções são permitidos).</li>
+                <li><b>Divisória:</b> "Adicionar divisória" e clique nos <b>vértices</b> da divisa; a numeração da linha <b>recomeça do 1</b> ao cruzá-la (nomes repetidos entre seções são permitidos). Vértices podem ser arrastados depois.</li>
+                <li><b>Talude em curva:</b> clique em <b>"Vista de topo"</b>, depois <b>"Desenhar eixo-guia"</b> e trace uma curva seguindo o eixo do talude (de uma ponta à outra). A vista frontal passa a "desenrolar" o talude por essa curva.</li>
                 <li><b>Numeração:</b> por proximidade, direita→esquerda ("Inverter" em cada linha).</li>
                 <li><b>Desfazer:</b> Ctrl+Z. <b>Esc</b> cancela a caixa/contorno em andamento.</li>
                 <li><b>Mover a tela:</b> botão do meio, <b>Espaço</b>+arrastar ou <b>Ctrl</b>+arrastar. <b>Zoom:</b> roda.</li>
