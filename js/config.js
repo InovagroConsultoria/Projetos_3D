@@ -13,23 +13,33 @@
 // OBS.: as datas abaixo foram inferidas pelo nome dos arquivos.
 //       Verifique/ajuste cada uma conforme o levantamento real.
 
-// Obras (nível acima dos taludes). Cada obra tem foto de fundo e um destino.
-//   disponivel:true  -> card leva ao seu conteúdo (link)
-//   disponivel:false -> botões aparecem, mas avisam "Em breve"
+// Obras (nível acima dos taludes). Cada obra tem foto de fundo, um subtítulo
+// e uma lista de ações (botões). Cada ação pode ser:
+//   { href }                 -> link direto
+//   { editor: {csv, nome} }  -> abre o editor de linhas com aquele CSV
+//   { emBreve: true }        -> botão que apenas avisa "Em breve"
+// cardLink (opcional) torna o card inteiro clicável.
 export const OBRAS = [
     {
         id: "br158",
         nome: "Obra BR 158 — Contenção de Talude",
         foto: "Fotos/obra_br158_web.jpg",
-        disponivel: true,
-        link: "taludes.html",
+        sub: null, // calculado a partir do nº de taludes
+        cardLink: "taludes.html",
+        acoes: [
+            { label: "Ver taludes →", href: "taludes.html", principal: true },
+        ],
     },
     {
         id: "perau",
         nome: "Obra do Perau",
         foto: "Fotos/obra_perau_web.jpg",
-        disponivel: false,
-        link: null,
+        sub: "Edição de linhas disponível",
+        cardLink: null,
+        acoes: [
+            { label: "Visualizar 3D", emBreve: true },
+            { label: "Editor de linhas", editor: { csv: "Superficie/Perau/Todos_grampos_perau.csv", nome: "Obra do Perau" } },
+        ],
     },
 ];
 
