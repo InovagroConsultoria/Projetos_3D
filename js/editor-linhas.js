@@ -33,6 +33,8 @@ let mE = 0, mN = 0;      // centro (média) de E/N — usado nas projeções
 let exagero = 1.0;
 let showNames = false;
 let rotularTodos = false; // ao gerar o PDF: rotula todos os grampos (nome ou id do CSV)
+let nameAngle = 0;       // ângulo dos rótulos em graus (0 = horizontal) — evita sobreposição
+let nameSize = 11;       // tamanho da fonte dos rótulos (px)
 let flipH = false;       // espelha a vista na horizontal (talude visto de trás)
 let enabledCats = new Set(['outros']); // por padrão só os grampos de grade
 
@@ -298,11 +300,15 @@ function draw() {
     // Nomes — no PDF (rotularTodos) mostra todos: nome renomeado/linha ou, na falta, o nome original do CSV.
     const mostrar = showNames || rotularTodos || view.scale >= labelThreshold;
     if (mostrar) {
-        ctx.fillStyle = '#111'; ctx.font = '11px sans-serif';
+        ctx.fillStyle = '#111'; ctx.font = nameSize + 'px sans-serif';
+        const rad = nameAngle * Math.PI / 180;
         points.forEach(p => {
             if (!catVisivel(p)) return;
             const rotulo = p.name || (rotularTodos ? p.id : null);
-            if (rotulo) { const s = toScreen(p); ctx.fillText(rotulo, s.x + 7, s.y - 7); }
+            if (!rotulo) return;
+            const s = toScreen(p);
+            if (rad === 0) { ctx.fillText(rotulo, s.x + 7, s.y - 7); }
+            else { ctx.save(); ctx.translate(s.x + 5, s.y - 5); ctx.rotate(-rad); ctx.fillText(rotulo, 0, 0); ctx.restore(); }
         });
     }
 
@@ -911,12 +917,22 @@ function ligarArrastePrancha() {
 //  Autosave
 // =============================================================
 function salvarAutosave() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, dividers, guide, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, nameAngle, nameSize, dividers, guide, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
 }
 function restaurarAutosave() {
     let dados; try { dados = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return; }
     if (!dados || !dados.lines) return;
     if (dados.flipH) { flipH = true; const chk = document.getElementById('chk-flip'); if (chk) chk.checked = true; }
+    if (typeof dados.nameAngle === 'number') {
+        nameAngle = dados.nameAngle;
+        const sl = document.getElementById('slider-angulo'); if (sl) sl.value = nameAngle;
+        const v = document.getElementById('valor-angulo'); if (v) v.textContent = nameAngle + '°';
+    }
+    if (typeof dados.nameSize === 'number') {
+        nameSize = dados.nameSize;
+        const sl = document.getElementById('slider-tam-nome'); if (sl) sl.value = nameSize;
+        const v = document.getElementById('valor-tam-nome'); if (v) v.textContent = nameSize + 'px';
+    }
     if (Array.isArray(dados.dividers)) dividers = normalizarDivisorias(dados.dividers);
     if (Array.isArray(dados.guide)) guide = dados.guide.map(g => ({ e: g.e, n: g.n }));
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
@@ -1125,6 +1141,12 @@ el('pdf-orient').addEventListener('change', layoutPagina);
 });
 window.addEventListener('resize', () => { if (!el('pdf-modal').classList.contains('hidden')) layoutPagina(); });
 document.getElementById('chk-mostrar-nomes').addEventListener('change', (e) => { showNames = e.target.checked; draw(); });
+document.getElementById('slider-angulo').addEventListener('input', (e) => {
+    nameAngle = parseInt(e.target.value, 10); document.getElementById('valor-angulo').textContent = nameAngle + '°'; salvarAutosave(); draw();
+});
+document.getElementById('slider-tam-nome').addEventListener('input', (e) => {
+    nameSize = parseInt(e.target.value, 10); document.getElementById('valor-tam-nome').textContent = nameSize + 'px'; salvarAutosave(); draw();
+});
 document.getElementById('chk-flip').addEventListener('change', (e) => {
     flipH = e.target.checked;
     lines.forEach(reordenarENumerar); // "direita" mudou: renumera por proximidade
