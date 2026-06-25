@@ -119,6 +119,13 @@ body {
 .obra-btn:hover { background: rgba(255, 255, 255, 0.30); }
 .obra-btn.principal { background: var(--verde); border-color: var(--verde); }
 .obra-btn.principal:hover { background: var(--verde-escuro); }
+.obra-btn.em-breve {
+    background: rgba(255, 255, 255, 0.10);
+    border-style: dashed;
+    opacity: 0.85;
+    cursor: default;
+}
+.obra-btn.em-breve:hover { background: rgba(255, 255, 255, 0.18); }
 .obra-tag {
     position: absolute;
     top: 14px;
