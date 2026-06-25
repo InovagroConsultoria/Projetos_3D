@@ -6,8 +6,9 @@
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>Inovagro 3D</title>
+    <title>Obra BR 158 — Inovagro 3D</title>
     <link rel="stylesheet" href="css/index.css">
+    <link rel="stylesheet" href="css/taludes.css">
 </head>
 <body>
     <header class="topbar">
@@ -18,9 +19,11 @@
         <button id="btn-info" class="info-btn">Informações</button>
     </header>
 
-    <main class="landing">
-        <h1 class="landing-titulo">Selecione a obra</h1>
-        <div id="obras" class="obras"></div>
+    <main class="taludes-main">
+        <a href="index.html" class="voltar">← Obras</a>
+        <h1 class="taludes-titulo">Obra BR 158 — Contenção de Talude</h1>
+        <p class="taludes-sub">Selecione um talude para visualizar em 3D ou editar as linhas.</p>
+        <ul id="lista-projetos"></ul>
     </main>
 
     <!-- Modal de informações -->
@@ -38,6 +41,6 @@
         </div>
     </div>
 
-    <script type="module" src="js/index.js"></script>
+    <script type="module" src="js/taludes.js"></script>
 </body>
 </html>

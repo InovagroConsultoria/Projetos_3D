@@ -13,6 +13,26 @@
 // OBS.: as datas abaixo foram inferidas pelo nome dos arquivos.
 //       Verifique/ajuste cada uma conforme o levantamento real.
 
+// Obras (nível acima dos taludes). Cada obra tem foto de fundo e um destino.
+//   disponivel:true  -> card leva ao seu conteúdo (link)
+//   disponivel:false -> botões aparecem, mas avisam "Em breve"
+export const OBRAS = [
+    {
+        id: "br158",
+        nome: "Obra BR 158 — Contenção de Talude",
+        foto: "Fotos/obra_br158_web.jpg",
+        disponivel: true,
+        link: "taludes.html",
+    },
+    {
+        id: "perau",
+        nome: "Obra do Perau",
+        foto: "Fotos/obra_perau_web.jpg",
+        disponivel: false,
+        link: null,
+    },
+];
+
 export const TALUDES = [
     {
         nome: "Talude T-5",
