@@ -33,6 +33,8 @@ let mE = 0, mN = 0;      // centro (média) de E/N — usado nas projeções
 let exagero = 1.0;
 let showNames = false;
 let rotularTodos = false; // ao gerar o PDF: rotula todos os grampos (nome ou id do CSV)
+let nameAngle = 0;       // ângulo dos rótulos em graus (0 = horizontal) — evita sobreposição
+let nameSize = 11;       // tamanho da fonte dos rótulos (px)
 let flipH = false;       // espelha a vista na horizontal (talude visto de trás)
 let enabledCats = new Set(['outros']); // por padrão só os grampos de grade
 
@@ -298,11 +300,15 @@ function draw() {
     // Nomes — no PDF (rotularTodos) mostra todos: nome renomeado/linha ou, na falta, o nome original do CSV.
     const mostrar = showNames || rotularTodos || view.scale >= labelThreshold;
     if (mostrar) {
-        ctx.fillStyle = '#111'; ctx.font = '11px sans-serif';
+        ctx.fillStyle = '#111'; ctx.font = nameSize + 'px sans-serif';
+        const rad = nameAngle * Math.PI / 180;
         points.forEach(p => {
             if (!catVisivel(p)) return;
             const rotulo = p.name || (rotularTodos ? p.id : null);
-            if (rotulo) { const s = toScreen(p); ctx.fillText(rotulo, s.x + 7, s.y - 7); }
+            if (!rotulo) return;
+            const s = toScreen(p);
+            if (rad === 0) { ctx.fillText(rotulo, s.x + 7, s.y - 7); }
+            else { ctx.save(); ctx.translate(s.x + 5, s.y - 5); ctx.rotate(-rad); ctx.fillText(rotulo, 0, 0); ctx.restore(); }
         });
     }
 
@@ -737,7 +743,7 @@ function baixar(blob, nome) {
 //  Montagem da prancha (modal) e exportação do PDF
 // =============================================================
 const PAGE_MM = { A0: [841, 1189], A1: [594, 841], A3: [297, 420], A4: [210, 297] };
-const pdfState = { desenhoImg: null, desenhoAspect: 1, bgImg: null, k: 1, layout: null, drag: null };
+const pdfState = { desenhoImg: null, desenhoAspect: 1, bgImg: null, k: 1, layout: null, drag: null, fs: { info: 1, counts: 1, legend: 1 } };
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
@@ -822,7 +828,7 @@ function posicionar() {
     d.style.width = L.desenho.w * k + 'px'; d.style.height = dh * k + 'px';
     [['info', 3.2], ['counts', 3.0], ['legend', 3.0]].forEach(([key, mm]) => {
         const e2 = el('pdf-el-' + key);
-        e2.style.left = L[key].x * k + 'px'; e2.style.top = L[key].y * k + 'px'; e2.style.fontSize = (mm * k) + 'px';
+        e2.style.left = L[key].x * k + 'px'; e2.style.top = L[key].y * k + 'px'; e2.style.fontSize = (mm * pdfState.fs[key] * k) + 'px';
     });
 }
 
@@ -836,28 +842,31 @@ function gerarPDF() {
 
     pdf.setTextColor(0, 0, 0);
     if (el('pdf-show-info').checked) {
-        let y = L.info.y + 4;
-        if (el('pdf-titulo').value) { pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(5)); pdf.text(el('pdf-titulo').value, L.info.x, y); y += 6; pdf.setFont('helvetica', 'normal'); }
-        pdf.setFontSize(pt(3.2));
-        [['Projeto', el('pdf-projeto').value], ['Data', el('pdf-data').value], ['Obs.', el('pdf-obs').value]].forEach(([k, v]) => { if (v) { pdf.text(`${k}: ${v}`, L.info.x, y); y += 4.5; } });
+        const s = pdfState.fs.info;
+        let y = L.info.y + 4 * s;
+        if (el('pdf-titulo').value) { pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(5 * s)); pdf.text(el('pdf-titulo').value, L.info.x, y); y += 6 * s; pdf.setFont('helvetica', 'normal'); }
+        pdf.setFontSize(pt(3.2 * s));
+        [['Projeto', el('pdf-projeto').value], ['Data', el('pdf-data').value], ['Obs.', el('pdf-obs').value]].forEach(([k, v]) => { if (v) { pdf.text(`${k}: ${v}`, L.info.x, y); y += 4.5 * s; } });
     }
     if (el('pdf-show-counts').checked) {
-        let y = L.counts.y + 4;
-        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6)); pdf.text('Contagem por categoria', L.counts.x, y); y += 5;
-        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0));
-        contagemCategorias().forEach(x => { pdf.text(`${x.label}: ${x.n}`, L.counts.x, y); y += 4; });
-        pdf.text(`Total: ${points.length}`, L.counts.x, y); y += 6;
-        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6)); pdf.text('Por linha', L.counts.x, y); y += 5;
-        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0));
+        const s = pdfState.fs.counts;
+        let y = L.counts.y + 4 * s;
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6 * s)); pdf.text('Contagem por categoria', L.counts.x, y); y += 5 * s;
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0 * s));
+        contagemCategorias().forEach(x => { pdf.text(`${x.label}: ${x.n}`, L.counts.x, y); y += 4 * s; });
+        pdf.text(`Total: ${points.length}`, L.counts.x, y); y += 6 * s;
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6 * s)); pdf.text('Por linha', L.counts.x, y); y += 5 * s;
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0 * s));
         if (!lines.length) pdf.text('Nenhuma linha.', L.counts.x, y);
-        else lines.forEach(l => { pdf.text(`Linha ${l.letra}: ${l.points.length}`, L.counts.x, y); y += 4; });
+        else lines.forEach(l => { pdf.text(`Linha ${l.letra}: ${l.points.length}`, L.counts.x, y); y += 4 * s; });
     }
     if (el('pdf-show-legend').checked) {
-        let y = L.legend.y + 4;
-        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6)); pdf.text('Legenda', L.legend.x, y); y += 5;
-        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0));
+        const s = pdfState.fs.legend;
+        let y = L.legend.y + 4 * s;
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6 * s)); pdf.text('Legenda', L.legend.x, y); y += 5 * s;
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0 * s));
         const itens = contagemCategorias().map(x => ({ color: x.color, label: x.label })).concat(lines.map(l => ({ color: l.color, label: 'Linha ' + l.letra })));
-        itens.forEach(it => { const rgb = hexRgb(it.color); pdf.setFillColor(rgb[0], rgb[1], rgb[2]); pdf.circle(L.legend.x + 1.3, y - 1.1, 1.2, 'F'); pdf.text(it.label, L.legend.x + 4, y); y += 4.2; });
+        itens.forEach(it => { const rgb = hexRgb(it.color); pdf.setFillColor(rgb[0], rgb[1], rgb[2]); pdf.circle(L.legend.x + 1.3 * s, y - 1.1 * s, 1.2 * s, 'F'); pdf.text(it.label, L.legend.x + 4 * s, y); y += 4.2 * s; });
     }
     pdf.save((nomeTalude || 'talude').replace(/\s+/g, '_') + '_prancha.pdf');
 }
@@ -898,7 +907,7 @@ function ligarArrastePrancha() {
         const r = page.getBoundingClientRect(), k = pdfState.k;
         const mmx = (e.clientX - r.left) / k, mmy = (e.clientY - r.top) / k;
         if (pdfState.drag.mode === 'resize') pdfState.layout.desenho.w = Math.max(20, mmx - pdfState.layout.desenho.x);
-        else { const L = pdfState.layout[pdfState.drag.key]; L.x = Math.max(0, mmx - pdfState.drag.offx); L.y = Math.max(0, mmy - pdfState.drag.offy); }
+        else { const L = pdfState.layout[pdfState.drag.key]; L.x = mmx - pdfState.drag.offx; L.y = mmy - pdfState.drag.offy; }
         posicionar();
     });
     window.addEventListener('mouseup', () => { pdfState.drag = null; });
@@ -908,12 +917,22 @@ function ligarArrastePrancha() {
 //  Autosave
 // =============================================================
 function salvarAutosave() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, dividers, guide, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, nameAngle, nameSize, dividers, guide, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
 }
 function restaurarAutosave() {
     let dados; try { dados = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return; }
     if (!dados || !dados.lines) return;
     if (dados.flipH) { flipH = true; const chk = document.getElementById('chk-flip'); if (chk) chk.checked = true; }
+    if (typeof dados.nameAngle === 'number') {
+        nameAngle = dados.nameAngle;
+        const sl = document.getElementById('slider-angulo'); if (sl) sl.value = nameAngle;
+        const v = document.getElementById('valor-angulo'); if (v) v.textContent = nameAngle + '°';
+    }
+    if (typeof dados.nameSize === 'number') {
+        nameSize = dados.nameSize;
+        const sl = document.getElementById('slider-tam-nome'); if (sl) sl.value = nameSize;
+        const v = document.getElementById('valor-tam-nome'); if (v) v.textContent = nameSize + 'px';
+    }
     if (Array.isArray(dados.dividers)) dividers = normalizarDivisorias(dados.dividers);
     if (Array.isArray(dados.guide)) guide = dados.guide.map(g => ({ e: g.e, n: g.n }));
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
@@ -1116,8 +1135,18 @@ el('pdf-orient').addEventListener('change', layoutPagina);
     el(id).addEventListener('input', () => { construirConteudo(); posicionar(); });
     el(id).addEventListener('change', () => { construirConteudo(); posicionar(); });
 });
+// Tamanho (escala) de cada bloco de texto no PDF
+[['pdf-fs-info', 'info'], ['pdf-fs-counts', 'counts'], ['pdf-fs-legend', 'legend']].forEach(([id, key]) => {
+    el(id).addEventListener('input', () => { pdfState.fs[key] = parseFloat(el(id).value); posicionar(); });
+});
 window.addEventListener('resize', () => { if (!el('pdf-modal').classList.contains('hidden')) layoutPagina(); });
 document.getElementById('chk-mostrar-nomes').addEventListener('change', (e) => { showNames = e.target.checked; draw(); });
+document.getElementById('slider-angulo').addEventListener('input', (e) => {
+    nameAngle = parseInt(e.target.value, 10); document.getElementById('valor-angulo').textContent = nameAngle + '°'; salvarAutosave(); draw();
+});
+document.getElementById('slider-tam-nome').addEventListener('input', (e) => {
+    nameSize = parseInt(e.target.value, 10); document.getElementById('valor-tam-nome').textContent = nameSize + 'px'; salvarAutosave(); draw();
+});
 document.getElementById('chk-flip').addEventListener('change', (e) => {
     flipH = e.target.checked;
     lines.forEach(reordenarENumerar); // "direita" mudou: renumera por proximidade

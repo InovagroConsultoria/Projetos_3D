@@ -41,6 +41,13 @@
         </div>
 
         <div class="bloco">
+            <label for="slider-angulo">Ângulo dos nomes: <span id="valor-angulo">0°</span></label>
+            <input type="range" id="slider-angulo" min="0" max="90" step="15" value="0">
+            <label for="slider-tam-nome" style="margin-top:6px;display:block">Tamanho dos nomes: <span id="valor-tam-nome">11px</span></label>
+            <input type="range" id="slider-tam-nome" min="7" max="18" step="1" value="11">
+        </div>
+
+        <div class="bloco">
             <button id="btn-divisoria" class="largo">✂️ Adicionar divisória</button>
             <div id="lista-divisorias"></div>
         </div>
@@ -147,9 +154,18 @@
                 <div class="pdf-campo"><label>Projeto</label><input type="text" id="pdf-projeto"></div>
                 <div class="pdf-campo"><label>Data</label><input type="text" id="pdf-data"></div>
                 <div class="pdf-campo"><label>Observações</label><textarea id="pdf-obs" rows="2"></textarea></div>
-                <label class="check"><input type="checkbox" id="pdf-show-info" checked> Bloco de textos</label>
-                <label class="check"><input type="checkbox" id="pdf-show-counts" checked> Blocos de contagem</label>
-                <label class="check"><input type="checkbox" id="pdf-show-legend" checked> Legenda de cores</label>
+                <div class="pdf-bloco-ctrl">
+                    <label class="check"><input type="checkbox" id="pdf-show-info" checked> Título / textos</label>
+                    <input type="range" id="pdf-fs-info" class="pdf-fs" min="0.5" max="2.5" step="0.1" value="1" title="Tamanho do texto">
+                </div>
+                <div class="pdf-bloco-ctrl">
+                    <label class="check"><input type="checkbox" id="pdf-show-counts" checked> Contagem por categoria</label>
+                    <input type="range" id="pdf-fs-counts" class="pdf-fs" min="0.5" max="2.5" step="0.1" value="1" title="Tamanho do texto">
+                </div>
+                <div class="pdf-bloco-ctrl">
+                    <label class="check"><input type="checkbox" id="pdf-show-legend" checked> Legenda de cores</label>
+                    <input type="range" id="pdf-fs-legend" class="pdf-fs" min="0.5" max="2.5" step="0.1" value="1" title="Tamanho do texto">
+                </div>
                 <div class="pdf-actions">
                     <button id="pdf-gerar">Exportar PDF</button>
                     <button id="pdf-fechar" class="perigo">Fechar</button>
