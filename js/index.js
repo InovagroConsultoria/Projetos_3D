@@ -1,39 +1,62 @@
-// Monta o menu de projetos a partir da lista em config.js
-import { TALUDES } from "./config.js";
+// Página inicial: cartões das obras (foto de fundo + nome na frente).
+import { OBRAS, TALUDES } from "./config.js";
+import { initInfoModal, toast } from "./ui.js";
 
-const lista = document.getElementById("lista-projetos");
+initInfoModal();
 
-for (const talude of TALUDES) {
-    // Link do visualizador 3D
-    const paramsVis = new URLSearchParams({ v: "2", glb: talude.glb, csv: talude.csv });
-    if (talude.data) paramsVis.set("data", talude.data);
+const grade = document.getElementById("obras");
 
-    // Link do editor de linhas
-    const paramsEd = new URLSearchParams({ csv: talude.csv, nome: talude.nome });
+for (const obra of OBRAS) {
+    const card = document.createElement("article");
+    card.className = "obra" + (obra.disponivel ? "" : " obra-indisponivel");
+    card.style.backgroundImage = `linear-gradient(180deg, rgba(0,0,0,.15) 0%, rgba(0,0,0,.75) 100%), url('${obra.foto}')`;
 
-    const li = document.createElement("li");
-    li.className = "projeto";
+    if (!obra.disponivel) {
+        const tag = document.createElement("span");
+        tag.className = "obra-tag";
+        tag.textContent = "Em breve";
+        card.appendChild(tag);
+    }
 
-    const nome = document.createElement("div");
-    nome.className = "projeto-nome";
-    nome.textContent = talude.nome;
+    const conteudo = document.createElement("div");
+    conteudo.className = "obra-conteudo";
 
-    const acoes = document.createElement("div");
-    acoes.className = "projeto-acoes";
+    const titulo = document.createElement("h2");
+    titulo.className = "obra-nome";
+    titulo.textContent = obra.nome;
+    conteudo.appendChild(titulo);
 
-    const aVis = document.createElement("a");
-    aVis.href = `visualizador.html?${paramsVis.toString()}`;
-    aVis.className = "btn-visualizar";
-    aVis.textContent = "Visualizar 3D";
+    if (obra.disponivel) {
+        const sub = document.createElement("p");
+        sub.className = "obra-sub";
+        const n = TALUDES.length;
+        sub.textContent = `${n} talude${n === 1 ? "" : "s"} disponíve${n === 1 ? "l" : "is"}`;
+        conteudo.appendChild(sub);
 
-    const aEd = document.createElement("a");
-    aEd.href = `editor-linhas.html?${paramsEd.toString()}`;
-    aEd.className = "btn-editor";
-    aEd.textContent = "Editor de linhas";
+        const acoes = document.createElement("div");
+        acoes.className = "obra-acoes";
+        const btn = document.createElement("a");
+        btn.className = "obra-btn principal";
+        btn.href = obra.link;
+        btn.textContent = "Ver taludes →";
+        acoes.appendChild(btn);
+        conteudo.appendChild(acoes);
+        // O card inteiro também leva ao destino.
+        card.classList.add("clicavel");
+        card.addEventListener("click", (e) => { if (e.target.tagName !== "A") window.location.href = obra.link; });
+    } else {
+        const acoes = document.createElement("div");
+        acoes.className = "obra-acoes";
+        ["Visualizar 3D", "Editor de linhas"].forEach(rotulo => {
+            const b = document.createElement("button");
+            b.className = "obra-btn";
+            b.textContent = rotulo;
+            b.addEventListener("click", () => toast("Em breve"));
+            acoes.appendChild(b);
+        });
+        conteudo.appendChild(acoes);
+    }
 
-    acoes.appendChild(aVis);
-    acoes.appendChild(aEd);
-    li.appendChild(nome);
-    li.appendChild(acoes);
-    lista.appendChild(li);
+    card.appendChild(conteudo);
+    grade.appendChild(card);
 }
