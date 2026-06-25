@@ -352,6 +352,9 @@ button.largo.ativo:hover { background-color: #a93226; }
 .pdf-actions { display: flex; gap: 8px; margin-top: 14px; }
 .pdf-actions button { flex: 1; }
 .pdf-dica { display: block; margin-top: 12px; font-size: 11px; color: #888; }
+.pdf-bloco-ctrl { display: flex; align-items: center; gap: 8px; margin: 4px 0; }
+.pdf-bloco-ctrl .check { flex: 1; }
+.pdf-fs { width: 72px; flex-shrink: 0; }
 
 .pdf-stage {
     flex: 1;

@@ -737,7 +737,7 @@ function baixar(blob, nome) {
 //  Montagem da prancha (modal) e exportação do PDF
 // =============================================================
 const PAGE_MM = { A0: [841, 1189], A1: [594, 841], A3: [297, 420], A4: [210, 297] };
-const pdfState = { desenhoImg: null, desenhoAspect: 1, bgImg: null, k: 1, layout: null, drag: null };
+const pdfState = { desenhoImg: null, desenhoAspect: 1, bgImg: null, k: 1, layout: null, drag: null, fs: { info: 1, counts: 1, legend: 1 } };
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
@@ -822,7 +822,7 @@ function posicionar() {
     d.style.width = L.desenho.w * k + 'px'; d.style.height = dh * k + 'px';
     [['info', 3.2], ['counts', 3.0], ['legend', 3.0]].forEach(([key, mm]) => {
         const e2 = el('pdf-el-' + key);
-        e2.style.left = L[key].x * k + 'px'; e2.style.top = L[key].y * k + 'px'; e2.style.fontSize = (mm * k) + 'px';
+        e2.style.left = L[key].x * k + 'px'; e2.style.top = L[key].y * k + 'px'; e2.style.fontSize = (mm * pdfState.fs[key] * k) + 'px';
     });
 }
 
@@ -836,28 +836,31 @@ function gerarPDF() {
 
     pdf.setTextColor(0, 0, 0);
     if (el('pdf-show-info').checked) {
-        let y = L.info.y + 4;
-        if (el('pdf-titulo').value) { pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(5)); pdf.text(el('pdf-titulo').value, L.info.x, y); y += 6; pdf.setFont('helvetica', 'normal'); }
-        pdf.setFontSize(pt(3.2));
-        [['Projeto', el('pdf-projeto').value], ['Data', el('pdf-data').value], ['Obs.', el('pdf-obs').value]].forEach(([k, v]) => { if (v) { pdf.text(`${k}: ${v}`, L.info.x, y); y += 4.5; } });
+        const s = pdfState.fs.info;
+        let y = L.info.y + 4 * s;
+        if (el('pdf-titulo').value) { pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(5 * s)); pdf.text(el('pdf-titulo').value, L.info.x, y); y += 6 * s; pdf.setFont('helvetica', 'normal'); }
+        pdf.setFontSize(pt(3.2 * s));
+        [['Projeto', el('pdf-projeto').value], ['Data', el('pdf-data').value], ['Obs.', el('pdf-obs').value]].forEach(([k, v]) => { if (v) { pdf.text(`${k}: ${v}`, L.info.x, y); y += 4.5 * s; } });
     }
     if (el('pdf-show-counts').checked) {
-        let y = L.counts.y + 4;
-        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6)); pdf.text('Contagem por categoria', L.counts.x, y); y += 5;
-        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0));
-        contagemCategorias().forEach(x => { pdf.text(`${x.label}: ${x.n}`, L.counts.x, y); y += 4; });
-        pdf.text(`Total: ${points.length}`, L.counts.x, y); y += 6;
-        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6)); pdf.text('Por linha', L.counts.x, y); y += 5;
-        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0));
+        const s = pdfState.fs.counts;
+        let y = L.counts.y + 4 * s;
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6 * s)); pdf.text('Contagem por categoria', L.counts.x, y); y += 5 * s;
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0 * s));
+        contagemCategorias().forEach(x => { pdf.text(`${x.label}: ${x.n}`, L.counts.x, y); y += 4 * s; });
+        pdf.text(`Total: ${points.length}`, L.counts.x, y); y += 6 * s;
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6 * s)); pdf.text('Por linha', L.counts.x, y); y += 5 * s;
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0 * s));
         if (!lines.length) pdf.text('Nenhuma linha.', L.counts.x, y);
-        else lines.forEach(l => { pdf.text(`Linha ${l.letra}: ${l.points.length}`, L.counts.x, y); y += 4; });
+        else lines.forEach(l => { pdf.text(`Linha ${l.letra}: ${l.points.length}`, L.counts.x, y); y += 4 * s; });
     }
     if (el('pdf-show-legend').checked) {
-        let y = L.legend.y + 4;
-        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6)); pdf.text('Legenda', L.legend.x, y); y += 5;
-        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0));
+        const s = pdfState.fs.legend;
+        let y = L.legend.y + 4 * s;
+        pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6 * s)); pdf.text('Legenda', L.legend.x, y); y += 5 * s;
+        pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0 * s));
         const itens = contagemCategorias().map(x => ({ color: x.color, label: x.label })).concat(lines.map(l => ({ color: l.color, label: 'Linha ' + l.letra })));
-        itens.forEach(it => { const rgb = hexRgb(it.color); pdf.setFillColor(rgb[0], rgb[1], rgb[2]); pdf.circle(L.legend.x + 1.3, y - 1.1, 1.2, 'F'); pdf.text(it.label, L.legend.x + 4, y); y += 4.2; });
+        itens.forEach(it => { const rgb = hexRgb(it.color); pdf.setFillColor(rgb[0], rgb[1], rgb[2]); pdf.circle(L.legend.x + 1.3 * s, y - 1.1 * s, 1.2 * s, 'F'); pdf.text(it.label, L.legend.x + 4 * s, y); y += 4.2 * s; });
     }
     pdf.save((nomeTalude || 'talude').replace(/\s+/g, '_') + '_prancha.pdf');
 }
@@ -898,7 +901,7 @@ function ligarArrastePrancha() {
         const r = page.getBoundingClientRect(), k = pdfState.k;
         const mmx = (e.clientX - r.left) / k, mmy = (e.clientY - r.top) / k;
         if (pdfState.drag.mode === 'resize') pdfState.layout.desenho.w = Math.max(20, mmx - pdfState.layout.desenho.x);
-        else { const L = pdfState.layout[pdfState.drag.key]; L.x = Math.max(0, mmx - pdfState.drag.offx); L.y = Math.max(0, mmy - pdfState.drag.offy); }
+        else { const L = pdfState.layout[pdfState.drag.key]; L.x = mmx - pdfState.drag.offx; L.y = mmy - pdfState.drag.offy; }
         posicionar();
     });
     window.addEventListener('mouseup', () => { pdfState.drag = null; });
@@ -1115,6 +1118,10 @@ el('pdf-orient').addEventListener('change', layoutPagina);
 ['pdf-titulo', 'pdf-projeto', 'pdf-data', 'pdf-obs', 'pdf-show-info', 'pdf-show-counts', 'pdf-show-legend'].forEach(id => {
     el(id).addEventListener('input', () => { construirConteudo(); posicionar(); });
     el(id).addEventListener('change', () => { construirConteudo(); posicionar(); });
+});
+// Tamanho (escala) de cada bloco de texto no PDF
+[['pdf-fs-info', 'info'], ['pdf-fs-counts', 'counts'], ['pdf-fs-legend', 'legend']].forEach(([id, key]) => {
+    el(id).addEventListener('input', () => { pdfState.fs[key] = parseFloat(el(id).value); posicionar(); });
 });
 window.addEventListener('resize', () => { if (!el('pdf-modal').classList.contains('hidden')) layoutPagina(); });
 document.getElementById('chk-mostrar-nomes').addEventListener('change', (e) => { showNames = e.target.checked; draw(); });
