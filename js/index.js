@@ -40,8 +40,12 @@ for (const obra of OBRAS) {
             acoes.appendChild(b);
         } else {
             const a = document.createElement("a");
-            a.className = "obra-btn" + (acao.principal ? " principal" : "");
-            if (acao.editor) {
+            a.className = "obra-btn" + (acao.principal || acao.viz ? " principal" : "");
+            if (acao.viz) {
+                const p = new URLSearchParams({ v: "2", glb: acao.viz.glb, csv: acao.viz.csv });
+                if (acao.viz.data) p.set("data", acao.viz.data);
+                a.href = `visualizador.html?${p.toString()}`;
+            } else if (acao.editor) {
                 const p = new URLSearchParams({ csv: acao.editor.csv, nome: acao.editor.nome });
                 a.href = `editor-linhas.html?${p.toString()}`;
             } else {

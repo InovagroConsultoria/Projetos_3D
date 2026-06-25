@@ -32,6 +32,7 @@ let points = [];         // { rowIndex, id, cat, e, n, hPCA, h, elev, lineIndex,
 let mE = 0, mN = 0;      // centro (média) de E/N — usado nas projeções
 let exagero = 1.0;
 let showNames = false;
+let rotularTodos = false; // ao gerar o PDF: rotula todos os grampos (nome ou id do CSV)
 let flipH = false;       // espelha a vista na horizontal (talude visto de trás)
 let enabledCats = new Set(['outros']); // por padrão só os grampos de grade
 
@@ -294,11 +295,15 @@ function draw() {
         if (p.lineIndex === currentLineIndex && assigned) { ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke(); }
     });
 
-    // Nomes
-    const mostrar = showNames || view.scale >= labelThreshold;
+    // Nomes — no PDF (rotularTodos) mostra todos: nome renomeado/linha ou, na falta, o nome original do CSV.
+    const mostrar = showNames || rotularTodos || view.scale >= labelThreshold;
     if (mostrar) {
         ctx.fillStyle = '#111'; ctx.font = '11px sans-serif';
-        points.forEach(p => { if (p.name && catVisivel(p)) { const s = toScreen(p); ctx.fillText(p.name, s.x + 7, s.y - 7); } });
+        points.forEach(p => {
+            if (!catVisivel(p)) return;
+            const rotulo = p.name || (rotularTodos ? p.id : null);
+            if (rotulo) { const s = toScreen(p); ctx.fillText(rotulo, s.x + 7, s.y - 7); }
+        });
     }
 
     // Contorno livre (lasso)
@@ -749,11 +754,11 @@ function contagemCategorias() {
 }
 
 function gerarImagemDesenho() {
-    const prev = showNames; showNames = true; fitView(); draw();
-    const off = document.createElement('canvas'); off.width = canvas.width; off.height = canvas.height;
-    const octx = off.getContext('2d'); octx.fillStyle = '#fff'; octx.fillRect(0, 0, off.width, off.height); octx.drawImage(canvas, 0, 0);
-    pdfState.desenhoImg = off.toDataURL('image/png'); pdfState.desenhoAspect = canvas.width / canvas.height;
-    showNames = prev; draw();
+    const prevNomes = showNames, prevTodos = rotularTodos;
+    showNames = true; rotularTodos = true; fitView(); draw();
+    // canvas é transparente (sem fundo branco) — deixa a prancha A0 aparecer por baixo
+    pdfState.desenhoImg = canvas.toDataURL('image/png'); pdfState.desenhoAspect = canvas.width / canvas.height;
+    showNames = prevNomes; rotularTodos = prevTodos; draw();
 }
 
 function abrirPdfModal() {
