@@ -17,71 +17,70 @@
 
     <canvas id="editor-canvas"></canvas>
 
+    <!-- Barra superior -->
+    <header id="topbar">
+        <a href="index.html" class="brand" title="Início">
+            <img src="Logos/drone1.png" class="brand-icon" alt="">
+            <img src="Logos/inovagro_logo1.png" class="brand-word" alt="Inovagro">
+        </a>
+        <span id="titulo-talude">Editor de Linhas</span>
+        <a href="index.html" id="home-link" title="Voltar ao menu">← Menu</a>
+    </header>
+
     <!-- Painel de controles (esquerda) -->
     <div id="painel-controles">
-        <h3 id="titulo-talude">Editor de Linhas</h3>
-
+        <h4>Linhas</h4>
         <div class="bloco">
             <label for="input-letra">Letra da linha</label>
             <div class="linha-form">
                 <input type="text" id="input-letra" maxlength="3" placeholder="A" autocomplete="off">
-                <button id="btn-nova-linha">Nova linha</button>
+                <button id="btn-nova-linha" class="primario">Nova linha</button>
             </div>
         </div>
-
         <div class="bloco">
-            <button id="btn-detectar" class="largo">⚡ Linhas pré-definidas (pelo CSV)</button>
+            <button id="btn-detectar" class="largo">⚡ Linhas pré-definidas (CSV)</button>
+            <button id="btn-desfazer" class="largo">↶ Desfazer <kbd>Ctrl+Z</kbd></button>
             <div id="aviso-sem-nome" class="aviso hidden"></div>
         </div>
 
+        <h4>Exibição</h4>
         <div class="bloco">
-            <button id="btn-desfazer" class="largo">↶ Desfazer (Ctrl+Z)</button>
             <label class="check"><input type="checkbox" id="chk-mostrar-nomes"> Mostrar nomes</label>
             <label class="check"><input type="checkbox" id="chk-flip"> Inverter vista (espelhar ↔)</label>
         </div>
-
         <div class="bloco">
-            <label for="slider-angulo">Ângulo dos nomes: <span id="valor-angulo">0°</span></label>
+            <label class="rotulo-slider" for="slider-angulo">Ângulo dos nomes <span id="valor-angulo">0°</span></label>
             <input type="range" id="slider-angulo" min="0" max="90" step="15" value="0">
-            <label for="slider-tam-nome" style="margin-top:6px;display:block">Tamanho dos nomes: <span id="valor-tam-nome">11px</span></label>
+            <label class="rotulo-slider" for="slider-tam-nome">Tamanho dos nomes <span id="valor-tam-nome">11px</span></label>
             <input type="range" id="slider-tam-nome" min="7" max="18" step="1" value="11">
+            <label class="rotulo-slider" for="slider-exagero">Exagero vertical <span id="valor-exagero">1.0×</span></label>
+            <input type="range" id="slider-exagero" min="1" max="6" step="0.5" value="1">
         </div>
-
-        <div class="bloco">
-            <button id="btn-excluir-pontos" class="largo">🗑️ Excluir pontos</button>
-            <div id="excluidos-status" class="excluidos"></div>
-        </div>
-
-        <div class="bloco">
-            <button id="btn-divisoria" class="largo">✂️ Adicionar divisória</button>
-            <div id="lista-divisorias"></div>
-        </div>
-
-        <div class="bloco">
-            <button id="btn-topo" class="largo">🗺️ Vista de topo</button>
-            <button id="btn-guia" class="largo" style="display:none">📐 Desenhar eixo-guia</button>
-            <div id="guia-status"></div>
-        </div>
-
         <div class="bloco">
             <label>Categorias visíveis</label>
             <div id="filtro-categorias"></div>
         </div>
 
+        <h4>Ferramentas</h4>
         <div class="bloco">
-            <label for="slider-exagero">Exagero vertical: <span id="valor-exagero">1.0×</span></label>
-            <input type="range" id="slider-exagero" min="1" max="6" step="0.5" value="1">
+            <button id="btn-excluir-pontos" class="largo">🗑️ Excluir pontos</button>
+            <div id="excluidos-status" class="excluidos"></div>
+            <button id="btn-divisoria" class="largo">✂️ Adicionar divisória</button>
+            <div id="lista-divisorias"></div>
+            <button id="btn-topo" class="largo">🗺️ Vista de topo</button>
+            <button id="btn-guia" class="largo" style="display:none">📐 Desenhar eixo-guia</button>
+            <div id="guia-status"></div>
         </div>
 
+        <h4>Exportar</h4>
         <div class="bloco botoes">
-            <button id="btn-enquadrar">Enquadrar</button>
-            <button id="btn-exportar">Exportar CSV</button>
-            <button id="btn-pdf">Exportar PDF</button>
-            <button id="btn-limpar" class="perigo">🗑️ Excluir todas as linhas</button>
+            <button id="btn-enquadrar" class="largo">Enquadrar</button>
+            <button id="btn-exportar" class="primario">Exportar CSV</button>
+            <button id="btn-pdf" class="primario">Exportar PDF</button>
+            <button id="btn-limpar" class="perigo">Excluir todas as linhas</button>
         </div>
 
         <div id="status-barra"></div>
-
         <button id="btn-ajuda" class="largo">❓ Como usar</button>
     </div>
 
@@ -116,8 +115,6 @@
         <h3>Linhas criadas</h3>
         <div id="lista-linhas"><small>Nenhuma linha ainda.</small></div>
     </div>
-
-    <a href="index.html" id="home-link" title="Voltar ao menu de taludes">← Menu</a>
 
     <!-- Mini-card para renomear ponto / linha / divisória -->
     <div id="mini-card" class="hidden">
