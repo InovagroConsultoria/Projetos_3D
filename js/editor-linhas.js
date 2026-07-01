@@ -37,6 +37,7 @@ let nameAngle = 0;       // ângulo dos rótulos em graus (0 = horizontal) — e
 let nameSize = 11;       // tamanho da fonte dos rótulos (px)
 let flipH = false;       // espelha a vista na horizontal (talude visto de trás)
 let enabledCats = new Set(['outros']); // por padrão só os grampos de grade
+let modoExcluir = false; // modo de exclusão de pontos (clique/caixa/contorno excluem)
 
 // --- Vista ---
 const view = { scale: 1, ox: 0, oy: 0 };
@@ -168,7 +169,7 @@ function iniciar(csvText) {
     aplicarGuia(); // se houver eixo-guia salvo, reprojeta por estaqueamento
     resizeCanvas();
     fitView();
-    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarStatus(); draw();
+    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarExcluidos(); atualizarStatus(); draw();
 
     const ls = document.getElementById('loading-screen');
     ls.classList.add('hidden'); setTimeout(() => { ls.style.display = 'none'; }, 400);
@@ -183,7 +184,8 @@ function worldX(p) { return topView ? (p.e - mE) : (flipH ? -p.h : p.h); }
 function worldY(p) { return topView ? -(p.n - mN) : -p.elev * exagero; }
 function toScreen(p) { return { x: worldX(p) * view.scale + view.ox, y: worldY(p) * view.scale + view.oy }; }
 function telaParaMundo(mx, my) { return { wx: (mx - view.ox) / view.scale, wy: (my - view.oy) / view.scale }; }
-function catVisivel(p) { return enabledCats.has(p.cat); }
+function catVisivel(p) { return !p.deleted && enabledCats.has(p.cat); }
+function ativos() { return points.filter(p => !p.deleted); }
 
 // --- Vista de topo / eixo-guia ---
 // (E, N) reais -> tela (na vista de topo).
@@ -393,13 +395,14 @@ function draw() {
 //  Desfazer
 // =============================================================
 function snapshot() {
-    return JSON.stringify({ cur: currentLineIndex, dividers, guide, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) });
+    return JSON.stringify({ cur: currentLineIndex, dividers, guide, del: points.filter(p => p.deleted).map(p => p.rowIndex), lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) });
 }
 function pushUndo() { undoStack.push(snapshot()); if (undoStack.length > UNDO_MAX) undoStack.shift(); }
 function desfazer() {
     if (undoStack.length === 0) return;
     const d = JSON.parse(undoStack.pop());
-    points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; });
+    const delSet = new Set(d.del || []);
+    points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; p.deleted = delSet.has(p.rowIndex); });
     dividers = normalizarDivisorias(d.dividers);
     guide = Array.isArray(d.guide) ? d.guide : [];
     points.forEach(p => { p.h = guide.length >= 2 ? chainage(p.e, p.n) : p.hPCA; });
@@ -409,7 +412,7 @@ function desfazer() {
         const line = { letra: l.letra, color: l.color, inverted: l.inverted, points: pts }; renumerar(line); return line;
     });
     currentLineIndex = (d.cur != null && d.cur < lines.length) ? d.cur : -1;
-    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarStatus(); salvarAutosave(); draw();
+    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarExcluidos(); atualizarStatus(); salvarAutosave(); draw();
 }
 
 // =============================================================
@@ -425,12 +428,12 @@ function novaLinha() {
 }
 // Quantos grampos (grade/fechamento) estão sem nome de linha no CSV.
 function gramposSemNome() {
-    return points.filter(p => CATS_LINHA.has(p.cat) && !chaveLinha(p));
+    return points.filter(p => !p.deleted && CATS_LINHA.has(p.cat) && !chaveLinha(p));
 }
 // Mostra/esconde o aviso de grampos sem nomenclatura.
 function atualizarAvisoSemNome() {
     const box = document.getElementById('aviso-sem-nome');
-    const alvo = points.filter(p => CATS_LINHA.has(p.cat));
+    const alvo = points.filter(p => !p.deleted && CATS_LINHA.has(p.cat));
     const sem = gramposSemNome();
     if (alvo.length > 0 && sem.length === alvo.length) {
         box.textContent = '⚠️ Os grampos deste CSV estão sem nome de linha. Não há como detectar linhas automaticamente — crie-as manualmente.';
@@ -445,7 +448,7 @@ function atualizarAvisoSemNome() {
 
 // Agrupa os grampos em linhas a partir dos nomes do CSV original.
 function detectarLinhas() {
-    const alvo = points.filter(p => CATS_LINHA.has(p.cat));
+    const alvo = points.filter(p => !p.deleted && CATS_LINHA.has(p.cat));
     if (alvo.length === 0) { alert('Não há grampos de grade ou de fechamento neste CSV.'); return; }
     const comNome = alvo.filter(p => chaveLinha(p));
     const semNome = alvo.length - comNome.length;
@@ -527,7 +530,9 @@ function adicionarVarios(lista) {
 }
 function selecionarCaixaMundo(wx0, wy0, wx1, wy1) {
     const x0 = Math.min(wx0, wx1), x1 = Math.max(wx0, wx1), y0 = Math.min(wy0, wy1), y1 = Math.max(wy0, wy1);
-    adicionarVarios(points.filter(p => p.lineIndex == null && catVisivel(p) && worldX(p) >= x0 && worldX(p) <= x1 && worldY(p) >= y0 && worldY(p) <= y1));
+    const dentro = p => catVisivel(p) && worldX(p) >= x0 && worldX(p) <= x1 && worldY(p) >= y0 && worldY(p) <= y1;
+    if (modoExcluir) { excluirVarios(points.filter(dentro)); return; }
+    adicionarVarios(points.filter(p => p.lineIndex == null && dentro(p)));
 }
 function pontoEmPoligono(p, poly) {
     const x = worldX(p), y = worldY(p); let dentro = false;
@@ -539,6 +544,7 @@ function pontoEmPoligono(p, poly) {
 }
 function selecionarLasso(poly) {
     if (poly.length < 3) return;
+    if (modoExcluir) { excluirVarios(points.filter(p => catVisivel(p) && pontoEmPoligono(p, poly))); return; }
     adicionarVarios(points.filter(p => p.lineIndex == null && catVisivel(p) && pontoEmPoligono(p, poly)));
 }
 // --- Mini-card (substitui prompt do navegador) ---
@@ -568,7 +574,35 @@ function editarPonto(p) {
         pushUndo(); p.customName = (novo || '').trim() || null; renumerar(lines[p.lineIndex]); posMudanca();
     });
 }
-function posMudanca() { atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarStatus(); salvarAutosave(); draw(); }
+function posMudanca() { atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarExcluidos(); atualizarStatus(); salvarAutosave(); draw(); }
+
+// --- Exclusão de pontos ---
+function alternarModoExcluir() {
+    modoExcluir = !modoExcluir;
+    document.getElementById('btn-excluir-pontos').classList.toggle('ativo', modoExcluir);
+    atualizarStatus();
+}
+function excluirVarios(lista) {
+    if (!lista.length) return;
+    pushUndo();
+    lista.forEach(p => {
+        if (p.lineIndex != null) { const line = lines[p.lineIndex]; const i = line.points.indexOf(p); if (i >= 0) line.points.splice(i, 1); }
+        p.lineIndex = null; p.name = null; p.customName = null; p.deleted = true;
+    });
+    lines.forEach(reordenarENumerar);
+    posMudanca();
+}
+function restaurarExcluidos() {
+    const n = points.filter(p => p.deleted).length;
+    if (!n || !confirm(`Restaurar ${n} ponto(s) excluído(s)?`)) return;
+    pushUndo(); points.forEach(p => { p.deleted = false; }); posMudanca();
+}
+function atualizarExcluidos() {
+    const box = document.getElementById('excluidos-status'); if (!box) return;
+    const n = points.filter(p => p.deleted).length;
+    box.innerHTML = n ? `<span>${n} ponto(s) excluído(s)</span> <button id="btn-restaurar" class="btn-mini">Restaurar</button>` : '';
+    const b = document.getElementById('btn-restaurar'); if (b) b.addEventListener('click', restaurarExcluidos);
+}
 
 // --- Vista de topo / eixo-guia ---
 function alternarVistaTopo() {
@@ -661,7 +695,7 @@ function atualizarPainelDivisorias() {
 function montarFiltroCategorias() {
     const cont = document.getElementById('filtro-categorias'); cont.innerHTML = '';
     CATS.forEach(c => {
-        const n = points.filter(p => p.cat === c.key).length;
+        const n = points.filter(p => !p.deleted && p.cat === c.key).length;
         if (n === 0) return;
         const id = 'chk-cat-' + c.key;
         const div = document.createElement('label'); div.className = 'check cat-check';
@@ -717,8 +751,9 @@ function excluirLinha(li) {
 }
 function atualizarStatus() {
     const atribuidos = points.filter(p => p.lineIndex != null).length;
-    let html = `Pontos no arquivo: <b>${points.length}</b><br>Atribuídos a linhas: <b>${atribuidos}</b><br>Linhas: <b>${lines.length}</b> &middot; Divisórias: <b>${dividers.length}</b>`;
-    if (addingDivider) html = `<b style="color:#c0392b">Divisória:</b> clique para adicionar vértices; <b>duplo-clique</b> ou <b>Enter</b> conclui. (Esc cancela)<br>` + html;
+    let html = `Pontos ativos: <b>${ativos().length}</b><br>Atribuídos a linhas: <b>${atribuidos}</b><br>Linhas: <b>${lines.length}</b> &middot; Divisórias: <b>${dividers.length}</b>`;
+    if (modoExcluir) html = `<b style="color:#c0392b">Excluir pontos:</b> clique, caixa ou contorno excluem. (Esc sai)<br>` + html;
+    else if (addingDivider) html = `<b style="color:#c0392b">Divisória:</b> clique para adicionar vértices; <b>duplo-clique</b> ou <b>Enter</b> conclui. (Esc cancela)<br>` + html;
     else if (addingGuide) html = `<b style="color:#0a7d4b">Eixo-guia:</b> clique seguindo a curva do talude (de uma ponta à outra); <b>duplo-clique</b> ou <b>Enter</b> conclui. (Esc cancela)<br>` + html;
     else if (topView) html = `<b style="color:#0a7d4b">Vista de topo</b> — desenhe o eixo-guia ou volte à vista frontal.<br>` + html;
     document.getElementById('status-barra').innerHTML = html;
@@ -730,7 +765,10 @@ function atualizarStatus() {
 function exportar() {
     const novoNome = {};
     lines.forEach(line => line.points.forEach(p => { novoNome[p.rowIndex] = p.name; }));
-    const out = originalRows.map((parts, idx) => { const c = parts.slice(); if (novoNome[idx] != null) c[0] = novoNome[idx]; return c.join(delimiter); });
+    const del = new Set(points.filter(p => p.deleted).map(p => p.rowIndex));
+    const out = originalRows
+        .map((parts, idx) => del.has(idx) ? null : (() => { const c = parts.slice(); if (novoNome[idx] != null) c[0] = novoNome[idx]; return c.join(delimiter); })())
+        .filter(l => l !== null);
     baixar(new Blob([out.join('\r\n')], { type: 'text/csv;charset=utf-8' }), baseNome() + '_renomeado.csv');
 }
 function baseNome() { return (csvFileURL.split('/').pop() || 'pontos.csv').replace(/\.csv$/i, ''); }
@@ -743,7 +781,45 @@ function baixar(blob, nome) {
 //  Montagem da prancha (modal) e exportação do PDF
 // =============================================================
 const PAGE_MM = { A0: [841, 1189], A1: [594, 841], A3: [297, 420], A4: [210, 297] };
-const pdfState = { desenhoImg: null, desenhoAspect: 1, bgImg: null, k: 1, layout: null, drag: null, fs: { info: 1, counts: 1, legend: 1 } };
+const pdfState = { desenhoImg: null, desenhoAspect: 1, bgImg: null, k: 1, fitK: 1, zoom: 1, layout: null, drag: null, sel: null, fs: { info: 1, counts: 1, legend: 1 } };
+const PDF_KEY = STORAGE_KEY + ':pdf';
+
+// Layout/campos do montador salvos por talude.
+function salvarLayoutPdf() {
+    if (!pdfState.layout) return;
+    try {
+        localStorage.setItem(PDF_KEY, JSON.stringify({
+            layout: pdfState.layout, fs: pdfState.fs,
+            size: el('pdf-size').value, orient: el('pdf-orient').value,
+            campos: { titulo: el('pdf-titulo').value, projeto: el('pdf-projeto').value, data: el('pdf-data').value, obs: el('pdf-obs').value },
+            shows: { info: el('pdf-show-info').checked, counts: el('pdf-show-counts').checked, legend: el('pdf-show-legend').checked },
+        }));
+    } catch (e) {}
+}
+function restaurarLayoutPdf() {
+    let d; try { d = JSON.parse(localStorage.getItem(PDF_KEY)); } catch (e) { return false; }
+    if (!d || !d.layout) return false;
+    pdfState.layout = d.layout;
+    if (d.fs) { pdfState.fs = d.fs; [['info'], ['counts'], ['legend']].forEach(([k]) => { const s = el('pdf-fs-' + k); if (s) s.value = pdfState.fs[k]; }); }
+    if (d.size) el('pdf-size').value = d.size;
+    if (d.orient) el('pdf-orient').value = d.orient;
+    if (d.campos) { el('pdf-titulo').value = d.campos.titulo || ''; el('pdf-projeto').value = d.campos.projeto || ''; el('pdf-data').value = d.campos.data || ''; el('pdf-obs').value = d.campos.obs || ''; }
+    if (d.shows) { el('pdf-show-info').checked = !!d.shows.info; el('pdf-show-counts').checked = !!d.shows.counts; el('pdf-show-legend').checked = !!d.shows.legend; }
+    return true;
+}
+function layoutPadrao() {
+    const pg = pageMm();
+    return {
+        desenho: { x: pg.w * 0.04, y: pg.h * 0.06, w: pg.w * 0.6 },
+        info: { x: pg.w * 0.67, y: pg.h * 0.06 },
+        counts: { x: pg.w * 0.67, y: pg.h * 0.30 },
+        legend: { x: pg.w * 0.67, y: pg.h * 0.70 },
+    };
+}
+function selecionarBloco(key) {
+    pdfState.sel = key;
+    ['desenho', 'info', 'counts', 'legend'].forEach(k => el('pdf-el-' + k).classList.toggle('sel', k === key));
+}
 if (window.pdfjsLib) pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
 
 function hexRgb(h) { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; }
@@ -755,7 +831,7 @@ function pageMm() {
     return { w: retrato ? base[0] : base[1], h: retrato ? base[1] : base[0] };
 }
 function contagemCategorias() {
-    const arr = []; CATS.forEach(c => { const n = points.filter(p => p.cat === c.key).length; if (n > 0) arr.push({ label: c.label, n, color: c.color }); });
+    const arr = []; CATS.forEach(c => { const n = points.filter(p => !p.deleted && p.cat === c.key).length; if (n > 0) arr.push({ label: c.label, n, color: c.color }); });
     return arr;
 }
 
@@ -771,14 +847,8 @@ function abrirPdfModal() {
     if (!window.jspdf || !window.jspdf.jsPDF) { alert('A biblioteca de PDF não carregou (verifique a conexão).'); return; }
     gerarImagemDesenho();
     el('pdf-desenho-img').src = pdfState.desenhoImg;
+    if (!restaurarLayoutPdf()) pdfState.layout = layoutPadrao();
     if (!el('pdf-titulo').value) el('pdf-titulo').value = nomeTalude;
-    const pg = pageMm();
-    pdfState.layout = {
-        desenho: { x: pg.w * 0.04, y: pg.h * 0.06, w: pg.w * 0.6 },
-        info: { x: pg.w * 0.67, y: pg.h * 0.06 },
-        counts: { x: pg.w * 0.67, y: pg.h * 0.30 },
-        legend: { x: pg.w * 0.67, y: pg.h * 0.70 },
-    };
     el('pdf-modal').classList.remove('hidden');
     construirConteudo(); layoutPagina();
 }
@@ -813,7 +883,8 @@ function construirConteudo() {
 function layoutPagina() {
     const pg = pageMm();
     const stage = document.querySelector('.pdf-stage');
-    pdfState.k = Math.min((stage.clientWidth - 40) / pg.w, (stage.clientHeight - 40) / pg.h);
+    pdfState.fitK = Math.min((stage.clientWidth - 40) / pg.w, (stage.clientHeight - 40) / pg.h);
+    pdfState.k = pdfState.fitK * pdfState.zoom;
     const page = el('pdf-page');
     page.style.width = pg.w * pdfState.k + 'px';
     page.style.height = pg.h * pdfState.k + 'px';
@@ -854,7 +925,7 @@ function gerarPDF() {
         pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6 * s)); pdf.text('Contagem por categoria', L.counts.x, y); y += 5 * s;
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0 * s));
         contagemCategorias().forEach(x => { pdf.text(`${x.label}: ${x.n}`, L.counts.x, y); y += 4 * s; });
-        pdf.text(`Total: ${points.length}`, L.counts.x, y); y += 6 * s;
+        pdf.text(`Total: ${ativos().length}`, L.counts.x, y); y += 6 * s;
         pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(3.6 * s)); pdf.text('Por linha', L.counts.x, y); y += 5 * s;
         pdf.setFont('helvetica', 'normal'); pdf.setFontSize(pt(3.0 * s));
         if (!lines.length) pdf.text('Nenhuma linha.', L.counts.x, y);
@@ -890,34 +961,55 @@ async function carregarFundoPDF(file) {
     } catch (err) { console.error(err); status.textContent = 'Falha ao ler o PDF.'; }
 }
 
+function mostrarGuias(vx, hy) {
+    const gv = el('pdf-guia-v'), gh = el('pdf-guia-h'), k = pdfState.k;
+    gv.style.display = vx == null ? 'none' : 'block';
+    gh.style.display = hy == null ? 'none' : 'block';
+    if (vx != null) gv.style.left = vx * k + 'px';
+    if (hy != null) gh.style.top = hy * k + 'px';
+}
 function ligarArrastePrancha() {
     const page = el('pdf-page');
     page.addEventListener('mousedown', (e) => {
         const handle = e.target.classList.contains('pdf-resize');
         const elDiv = e.target.closest('.pdf-el');
-        if (!handle && !elDiv) return;
+        if (!handle && !elDiv) { selecionarBloco(null); return; }
         const r = page.getBoundingClientRect(), k = pdfState.k;
         const mmx = (e.clientX - r.left) / k, mmy = (e.clientY - r.top) / k;
         if (handle) pdfState.drag = { mode: 'resize' };
-        else pdfState.drag = { mode: 'move', key: elDiv.dataset.el, offx: mmx - pdfState.layout[elDiv.dataset.el].x, offy: mmy - pdfState.layout[elDiv.dataset.el].y };
+        else {
+            const key = elDiv.dataset.el;
+            selecionarBloco(key);
+            pdfState.drag = { mode: 'move', key, offx: mmx - pdfState.layout[key].x, offy: mmy - pdfState.layout[key].y };
+        }
         e.preventDefault();
     });
     window.addEventListener('mousemove', (e) => {
         if (!pdfState.drag) return;
         const r = page.getBoundingClientRect(), k = pdfState.k;
         const mmx = (e.clientX - r.left) / k, mmy = (e.clientY - r.top) / k;
-        if (pdfState.drag.mode === 'resize') pdfState.layout.desenho.w = Math.max(20, mmx - pdfState.layout.desenho.x);
-        else { const L = pdfState.layout[pdfState.drag.key]; L.x = mmx - pdfState.drag.offx; L.y = mmy - pdfState.drag.offy; }
+        if (pdfState.drag.mode === 'resize') { pdfState.layout.desenho.w = Math.max(20, mmx - pdfState.layout.desenho.x); posicionar(); return; }
+        const key = pdfState.drag.key, L = pdfState.layout[key];
+        L.x = mmx - pdfState.drag.offx; L.y = mmy - pdfState.drag.offy;
+        // snap ao centro da folha (blocos): centro do bloco a até 3 mm do centro da página
+        const pg = pageMm(), elDiv = el('pdf-el-' + key);
+        const wMm = elDiv.offsetWidth / k, hMm = elDiv.offsetHeight / k;
+        let gx = null, gy = null;
+        if (Math.abs(L.x + wMm / 2 - pg.w / 2) < 3) { L.x = pg.w / 2 - wMm / 2; gx = pg.w / 2; }
+        if (Math.abs(L.y + hMm / 2 - pg.h / 2) < 3) { L.y = pg.h / 2 - hMm / 2; gy = pg.h / 2; }
+        mostrarGuias(gx, gy);
         posicionar();
     });
-    window.addEventListener('mouseup', () => { pdfState.drag = null; });
+    window.addEventListener('mouseup', () => {
+        if (pdfState.drag) { pdfState.drag = null; mostrarGuias(null, null); salvarLayoutPdf(); }
+    });
 }
 
 // =============================================================
 //  Autosave
 // =============================================================
 function salvarAutosave() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, nameAngle, nameSize, dividers, guide, lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, nameAngle, nameSize, dividers, guide, del: points.filter(p => p.deleted).map(p => p.rowIndex), lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
 }
 function restaurarAutosave() {
     let dados; try { dados = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return; }
@@ -935,6 +1027,7 @@ function restaurarAutosave() {
     }
     if (Array.isArray(dados.dividers)) dividers = normalizarDivisorias(dados.dividers);
     if (Array.isArray(dados.guide)) guide = dados.guide.map(g => ({ e: g.e, n: g.n }));
+    if (Array.isArray(dados.del)) { const ds = new Set(dados.del); points.forEach(p => { if (ds.has(p.rowIndex)) p.deleted = true; }); }
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
     lines = dados.lines.map((l, li) => {
         const pts = (l.pts || []).map(o => { const p = byRow[o.r]; if (p) { p.lineIndex = li; p.customName = o.c; } return p; }).filter(Boolean);
@@ -961,6 +1054,7 @@ function cancelarSelecao() {
     boxArmed = null; boxPreview = null; lasso = null;
     if (addingDivider) { addingDivider = false; document.getElementById('btn-divisoria').classList.remove('ativo'); }
     if (addingGuide) { addingGuide = false; document.getElementById('btn-guia').classList.remove('ativo'); }
+    if (modoExcluir) { modoExcluir = false; document.getElementById('btn-excluir-pontos').classList.remove('ativo'); }
     diviPts = []; guiaPts = []; diviMouse = null; atualizarStatus();
 }
 
@@ -1034,7 +1128,7 @@ window.addEventListener('mouseup', (e) => {
     if (boxArmed) { // 2º clique fecha a caixa
         const w = telaParaMundo(mx, my); selecionarCaixaMundo(boxArmed.wx, boxArmed.wy, w.wx, w.wy);
         boxArmed = null; boxPreview = null;
-    } else if (pointer.downPoint) { clicarPonto(pointer.downPoint); }
+    } else if (pointer.downPoint) { if (modoExcluir) excluirVarios([pointer.downPoint]); else clicarPonto(pointer.downPoint); }
     else { const w = telaParaMundo(mx, my); boxArmed = { wx: w.wx, wy: w.wy }; boxPreview = { x0: mx, y0: my, x1: mx, y1: my }; draw(); }
     pointer.downPoint = null; pointer.dragging = false;
 });
@@ -1076,9 +1170,16 @@ canvas.addEventListener('wheel', (e) => {
 }, { passive: false });
 
 window.addEventListener('keydown', (e) => {
-    // Não interfere quando o modal de montagem do PDF está aberto.
+    // Modal do PDF aberto: Esc fecha; setas movem o bloco selecionado (1 mm; Shift = 5 mm).
     if (!document.getElementById('pdf-modal').classList.contains('hidden')) {
-        if (e.key === 'Escape') fecharPdfModal();
+        if (e.key === 'Escape') { fecharPdfModal(); return; }
+        if (pdfState.sel && e.key.startsWith('Arrow') && !/INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) {
+            e.preventDefault();
+            const passo = e.shiftKey ? 5 : 1, L = pdfState.layout[pdfState.sel];
+            if (e.key === 'ArrowLeft') L.x -= passo; if (e.key === 'ArrowRight') L.x += passo;
+            if (e.key === 'ArrowUp') L.y -= passo; if (e.key === 'ArrowDown') L.y += passo;
+            posicionar(); salvarLayoutPdf();
+        }
         return;
     }
     const ajudaModal = document.getElementById('ajuda-modal');
@@ -1105,6 +1206,7 @@ window.addEventListener('resize', () => { resizeCanvas(); draw(); });
 document.getElementById('btn-desfazer').addEventListener('click', desfazer);
 document.getElementById('btn-detectar').addEventListener('click', detectarLinhas);
 document.getElementById('btn-divisoria').addEventListener('click', alternarModoDivisoria);
+document.getElementById('btn-excluir-pontos').addEventListener('click', alternarModoExcluir);
 document.getElementById('btn-topo').addEventListener('click', alternarVistaTopo);
 document.getElementById('btn-guia').addEventListener('click', alternarModoGuia);
 
@@ -1129,15 +1231,25 @@ ligarArrastePrancha();
 el('pdf-fechar').addEventListener('click', fecharPdfModal);
 el('pdf-gerar').addEventListener('click', gerarPDF);
 el('pdf-bg').addEventListener('change', (e) => { if (e.target.files[0]) carregarFundoPDF(e.target.files[0]); });
-el('pdf-size').addEventListener('change', layoutPagina);
-el('pdf-orient').addEventListener('change', layoutPagina);
+el('pdf-size').addEventListener('change', () => { layoutPagina(); salvarLayoutPdf(); });
+el('pdf-orient').addEventListener('change', () => { layoutPagina(); salvarLayoutPdf(); });
 ['pdf-titulo', 'pdf-projeto', 'pdf-data', 'pdf-obs', 'pdf-show-info', 'pdf-show-counts', 'pdf-show-legend'].forEach(id => {
-    el(id).addEventListener('input', () => { construirConteudo(); posicionar(); });
-    el(id).addEventListener('change', () => { construirConteudo(); posicionar(); });
+    el(id).addEventListener('input', () => { construirConteudo(); posicionar(); salvarLayoutPdf(); });
+    el(id).addEventListener('change', () => { construirConteudo(); posicionar(); salvarLayoutPdf(); });
 });
 // Tamanho (escala) de cada bloco de texto no PDF
 [['pdf-fs-info', 'info'], ['pdf-fs-counts', 'counts'], ['pdf-fs-legend', 'legend']].forEach(([id, key]) => {
-    el(id).addEventListener('input', () => { pdfState.fs[key] = parseFloat(el(id).value); posicionar(); });
+    el(id).addEventListener('input', () => { pdfState.fs[key] = parseFloat(el(id).value); posicionar(); salvarLayoutPdf(); });
+});
+// Zoom da prancha e redefinição do layout
+el('pdf-zoom').addEventListener('input', () => { pdfState.zoom = parseFloat(el('pdf-zoom').value); layoutPagina(); });
+el('pdf-zoom-fit').addEventListener('click', () => { pdfState.zoom = 1; el('pdf-zoom').value = '1'; layoutPagina(); });
+el('pdf-redefinir').addEventListener('click', () => {
+    if (!confirm('Redefinir o layout da prancha para o padrão?')) return;
+    try { localStorage.removeItem(PDF_KEY); } catch (e) {}
+    pdfState.layout = layoutPadrao(); pdfState.fs = { info: 1, counts: 1, legend: 1 };
+    ['info', 'counts', 'legend'].forEach(k => { el('pdf-fs-' + k).value = '1'; });
+    construirConteudo(); layoutPagina();
 });
 window.addEventListener('resize', () => { if (!el('pdf-modal').classList.contains('hidden')) layoutPagina(); });
 document.getElementById('chk-mostrar-nomes').addEventListener('change', (e) => { showNames = e.target.checked; draw(); });

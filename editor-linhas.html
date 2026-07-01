@@ -48,6 +48,11 @@
         </div>
 
         <div class="bloco">
+            <button id="btn-excluir-pontos" class="largo">🗑️ Excluir pontos</button>
+            <div id="excluidos-status" class="excluidos"></div>
+        </div>
+
+        <div class="bloco">
             <button id="btn-divisoria" class="largo">✂️ Adicionar divisória</button>
             <div id="lista-divisorias"></div>
         </div>
@@ -95,6 +100,7 @@
                 <li><b>Contorno livre:</b> clique e <b>arraste</b> contornando os pontos; ao soltar, seleciona o que estiver dentro.</li>
                 <li><b>Caixa:</b> <b>clique</b> num ponto vazio (1º canto), mova e <b>clique de novo</b> (canto oposto) para fechar.</li>
                 <li><b>Um ponto:</b> clique nele para adicionar/remover.</li>
+                <li><b>Excluir pontos:</b> ative o modo e use clique, caixa ou contorno; os excluídos saem das contagens e do CSV exportado ("Restaurar" desfaz).</li>
                 <li><b>Renomear um ponto:</b> <b>botão direito</b> abre um mini-card (ex.: "A -1"); a numeração se ajusta sozinha.</li>
                 <li><b>Divisória:</b> "Adicionar divisória" e clique nos <b>vértices</b> da divisa; a numeração da linha <b>recomeça do 1</b> ao cruzá-la (nomes repetidos entre seções são permitidos). Vértices podem ser arrastados depois.</li>
                 <li><b>Talude em curva:</b> clique em <b>"Vista de topo"</b>, depois <b>"Desenhar eixo-guia"</b> e trace uma curva seguindo o eixo do talude (de uma ponta à outra). A vista frontal passa a "desenrolar" o talude por essa curva.</li>
@@ -128,6 +134,7 @@
         <div class="pdf-modal-inner">
             <div class="pdf-sidebar">
                 <h3>Montar PDF</h3>
+                <h4>Folha</h4>
                 <div class="pdf-campo">
                     <label>Tamanho</label>
                     <select id="pdf-size">
@@ -145,15 +152,24 @@
                     </select>
                 </div>
                 <div class="pdf-campo">
-                    <label>Fundo (prancha A0 em PDF)</label>
+                    <label>Zoom da prancha</label>
+                    <div class="pdf-zoom-linha">
+                        <input type="range" id="pdf-zoom" min="0.5" max="3" step="0.1" value="1">
+                        <button id="pdf-zoom-fit" title="Ajustar à janela">Ajustar</button>
+                    </div>
+                </div>
+                <h4>Fundo</h4>
+                <div class="pdf-campo">
+                    <label>Prancha A0 em PDF</label>
                     <input type="file" id="pdf-bg" accept="application/pdf">
                     <small id="pdf-bg-status"></small>
                 </div>
-                <hr>
+                <h4>Conteúdo</h4>
                 <div class="pdf-campo"><label>Título</label><input type="text" id="pdf-titulo"></div>
                 <div class="pdf-campo"><label>Projeto</label><input type="text" id="pdf-projeto"></div>
                 <div class="pdf-campo"><label>Data</label><input type="text" id="pdf-data"></div>
                 <div class="pdf-campo"><label>Observações</label><textarea id="pdf-obs" rows="2"></textarea></div>
+                <h4>Blocos</h4>
                 <div class="pdf-bloco-ctrl">
                     <label class="check"><input type="checkbox" id="pdf-show-info" checked> Título / textos</label>
                     <input type="range" id="pdf-fs-info" class="pdf-fs" min="0.5" max="2.5" step="0.1" value="1" title="Tamanho do texto">
@@ -170,7 +186,8 @@
                     <button id="pdf-gerar">Exportar PDF</button>
                     <button id="pdf-fechar" class="perigo">Fechar</button>
                 </div>
-                <small class="pdf-dica">Arraste o desenho e os blocos sobre a folha. Use a alça no canto do desenho para redimensionar.</small>
+                <button id="pdf-redefinir">↩ Redefinir layout</button>
+                <small class="pdf-dica">Arraste os blocos (também para fora da folha). Clique num bloco e use as <b>setas</b> para ajuste fino (Shift = 5 mm). O layout fica salvo por talude.</small>
             </div>
             <div class="pdf-stage">
                 <div id="pdf-page">
@@ -182,6 +199,8 @@
                     <div id="pdf-el-info" class="pdf-el" data-el="info"></div>
                     <div id="pdf-el-counts" class="pdf-el" data-el="counts"></div>
                     <div id="pdf-el-legend" class="pdf-el" data-el="legend"></div>
+                    <div id="pdf-guia-v" class="pdf-guia"></div>
+                    <div id="pdf-guia-h" class="pdf-guia"></div>
                 </div>
             </div>
         </div>
