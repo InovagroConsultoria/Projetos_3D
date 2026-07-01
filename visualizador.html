@@ -16,18 +16,27 @@
         <div id="loading-text">Carregando modelo 3D...</div>
     </div>
 
+    <!-- Barra superior -->
+    <header id="topbar">
+        <a href="index.html" class="brand" title="Início">
+            <img src="Logos/drone1.png" class="brand-icon" alt="">
+            <img src="Logos/inovagro_logo1.png" class="brand-word" alt="Inovagro">
+        </a>
+        <span id="titulo-pagina">Visualizador 3D</span>
+        <a href="index.html" id="home-link" title="Voltar ao menu">← Menu</a>
+    </header>
+
     <div id="controls">
         <div id="toggle-button">⚙️</div>
         <div id="controls-content">
-            <h4>Buscar Ponto:</h4>
+            <h4>Buscar ponto</h4>
             <div id="search-container">
                 <input type="search" id="searchInput" placeholder="Ex: A1">
-                <button id="searchButton">Ir</button>
+                <button id="searchButton" class="primario">Ir</button>
             </div>
-            <button id="frameButton">Enquadrar Modelo</button>
+            <button id="frameButton">Enquadrar modelo</button>
 
-            <hr>
-            <h4>Filtro de Anotações:</h4>
+            <h4>Filtro de anotações</h4>
             <div id="label-filter-container">
                 <small>Carregando dados...</small>
             </div>
@@ -50,9 +59,6 @@
     <div id="footer-bar">
         <span><span id="footer-label">Total de Furos: </span><span id="point-count-display">...</span></span>
     </div>
-    <a href="index.html" id="home-link" title="Voltar ao menu de taludes">
-        <img src="INOVAGROLOGO3.png" alt="Voltar ao menu" id="footer-logo">
-    </a>
 
     <div id="legenda-painel">
         <h3>Legenda e Quantitativos</h3>
