@@ -80,7 +80,7 @@ body {
     transition: transform 0.18s ease, box-shadow 0.18s ease;
 }
 .obra.clicavel { cursor: pointer; }
-.obra.clicavel:hover { transform: translateY(-4px); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22); }
+.obra:hover { transform: translateY(-4px); box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22); }
 .obra-conteudo {
     position: relative;
     z-index: 2;

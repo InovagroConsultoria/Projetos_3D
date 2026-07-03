@@ -43,7 +43,7 @@ let modoEdicao = false;  // false = Visualizador de Linhas (padrão); true = edi
 function setModo(edicao) {
     modoEdicao = edicao;
     document.body.classList.toggle('modo-visualizacao', !edicao);
-    document.getElementById('titulo-talude').textContent = (edicao ? 'Editor — ' : 'Visualizador de Linhas — ') + nomeTalude;
+    document.getElementById('titulo-talude').textContent = (edicao ? 'Editor — ' : 'Visualização 2D — ') + nomeTalude;
     const rot = document.getElementById('rotulo-categorias');
     if (rot) rot.textContent = edicao ? 'Categorias visíveis' : 'Legenda';
     if (!edicao) { cancelarSelecao(); fecharMiniCard(); }

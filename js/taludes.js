@@ -38,7 +38,7 @@ for (const talude of TALUDES) {
     const aEd = document.createElement("a");
     aEd.href = `editor-linhas.html?${paramsEd.toString()}`;
     aEd.className = "btn-editor";
-    aEd.textContent = "Visualizador de linhas";
+    aEd.textContent = "Visualização 2D";
 
     acoes.appendChild(aVis);
     acoes.appendChild(aEd);
