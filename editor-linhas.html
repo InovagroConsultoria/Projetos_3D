@@ -27,23 +27,38 @@
         <a href="index.html" id="home-link" title="Voltar ao menu">← Menu</a>
     </header>
 
-    <!-- Painel de controles (esquerda) -->
-    <div id="painel-controles">
-        <h4 class="so-edicao">Linhas</h4>
-        <div class="bloco so-edicao">
+    <!-- Barra de ferramentas (ícones) -->
+    <div id="toolbar">
+        <button class="tool-btn so-edicao" data-card="card-linhas" title="Linhas">📏</button>
+        <button class="tool-btn" data-card="card-exibicao" title="Exibição">👁️</button>
+        <button class="tool-btn" data-card="card-categorias" title="Legenda / categorias">🏷️</button>
+        <button class="tool-btn so-edicao" data-card="card-ferramentas" title="Ferramentas">🛠️</button>
+        <button class="tool-btn so-edicao" data-card="card-exportar" title="Exportar">📤</button>
+        <div class="tool-sep"></div>
+        <button class="tool-btn" id="btn-enquadrar" title="Enquadrar">⛶</button>
+        <button class="tool-btn destaque so-visu" id="btn-editar" title="Editar">✏️</button>
+        <button class="tool-btn" id="btn-ajuda" title="Como usar">❓</button>
+    </div>
+
+    <!-- Cards de interação -->
+    <div id="card-linhas" class="tool-card hidden so-edicao">
+        <div class="tool-card-cab"><span>Linhas</span><button class="tool-card-x" title="Fechar">✕</button></div>
+        <div class="bloco">
             <label for="input-letra">Letra da linha</label>
             <div class="linha-form">
                 <input type="text" id="input-letra" maxlength="3" placeholder="A" autocomplete="off">
                 <button id="btn-nova-linha" class="primario">Nova linha</button>
             </div>
         </div>
-        <div class="bloco so-edicao">
+        <div class="bloco">
             <button id="btn-detectar" class="largo">⚡ Linhas pré-definidas (CSV)</button>
             <button id="btn-desfazer" class="largo">↶ Desfazer <kbd>Ctrl+Z</kbd></button>
             <div id="aviso-sem-nome" class="aviso hidden"></div>
         </div>
+    </div>
 
-        <h4>Exibição</h4>
+    <div id="card-exibicao" class="tool-card hidden">
+        <div class="tool-card-cab"><span>Exibição</span><button class="tool-card-x" title="Fechar">✕</button></div>
         <div class="bloco">
             <label class="check"><input type="checkbox" id="chk-mostrar-nomes"> Mostrar nomes</label>
             <label class="check"><input type="checkbox" id="chk-flip"> Inverter vista (espelhar ↔)</label>
@@ -54,13 +69,18 @@
             <label class="rotulo-slider" for="slider-tam-nome">Tamanho dos nomes <span id="valor-tam-nome">11px</span></label>
             <input type="range" id="slider-tam-nome" min="7" max="18" step="1" value="11">
         </div>
+    </div>
+
+    <div id="card-categorias" class="tool-card hidden">
+        <div class="tool-card-cab"><span id="rotulo-categorias">Categorias visíveis</span><button class="tool-card-x" title="Fechar">✕</button></div>
         <div class="bloco">
-            <label id="rotulo-categorias">Categorias visíveis</label>
             <div id="filtro-categorias"></div>
         </div>
+    </div>
 
-        <h4 class="so-edicao">Ferramentas</h4>
-        <div class="bloco so-edicao">
+    <div id="card-ferramentas" class="tool-card hidden so-edicao">
+        <div class="tool-card-cab"><span>Ferramentas</span><button class="tool-card-x" title="Fechar">✕</button></div>
+        <div class="bloco">
             <button id="btn-excluir-pontos" class="largo">🗑️ Excluir pontos</button>
             <div id="excluidos-status" class="excluidos"></div>
             <button id="btn-divisoria" class="largo">✂️ Adicionar divisória</button>
@@ -69,19 +89,19 @@
             <button id="btn-guia" class="largo" style="display:none">📐 Desenhar eixo-guia</button>
             <div id="guia-status"></div>
         </div>
-
-        <h4>Ações</h4>
-        <div class="bloco botoes">
-            <button id="btn-enquadrar" class="largo">Enquadrar</button>
-            <button id="btn-editar" class="primario so-visu">✏️ Editar</button>
-            <button id="btn-exportar" class="primario so-edicao">Exportar CSV</button>
-            <button id="btn-pdf" class="primario so-edicao">Exportar PDF</button>
-            <button id="btn-limpar" class="perigo so-edicao">Excluir todas as linhas</button>
-        </div>
-
-        <div id="status-barra"></div>
-        <button id="btn-ajuda" class="largo">❓ Como usar</button>
     </div>
+
+    <div id="card-exportar" class="tool-card hidden so-edicao">
+        <div class="tool-card-cab"><span>Exportar</span><button class="tool-card-x" title="Fechar">✕</button></div>
+        <div class="bloco botoes">
+            <button id="btn-exportar" class="primario">Exportar CSV</button>
+            <button id="btn-pdf" class="primario">Exportar PDF</button>
+            <button id="btn-limpar" class="perigo">Excluir todas as linhas</button>
+        </div>
+    </div>
+
+    <!-- Resumo (canto inferior esquerdo) -->
+    <div id="status-chip"><div id="status-barra"></div></div>
 
     <!-- Modal: como usar -->
     <div id="ajuda-modal" class="hidden">

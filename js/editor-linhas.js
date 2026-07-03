@@ -47,7 +47,22 @@ function setModo(edicao) {
     const rot = document.getElementById('rotulo-categorias');
     if (rot) rot.textContent = edicao ? 'Categorias visíveis' : 'Legenda';
     if (!edicao) { cancelarSelecao(); fecharMiniCard(); }
+    fecharCards();
     montarFiltroCategorias(); atualizarPainelLinhas(); atualizarStatus(); draw();
+}
+
+// --- Cards de interação (abertos pelos ícones da toolbar) ---
+function fecharCards() {
+    document.querySelectorAll('.tool-card').forEach(c => c.classList.add('hidden'));
+    document.querySelectorAll('#toolbar .tool-btn[data-card]').forEach(b => b.classList.remove('ativo'));
+}
+// Foco automático: seleciona a linha, abre o card dela e rola o painel até ele.
+function focarLinha(li) {
+    currentLineIndex = li;
+    atualizarPainelLinhas();
+    const elCard = document.querySelectorAll('#lista-linhas .linha-item')[li];
+    if (elCard) elCard.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+    draw();
 }
 
 // --- Vista ---
@@ -543,9 +558,9 @@ function removerDeLinhaSilencioso(p) {
     p.lineIndex = null; p.name = null; p.customName = null; reordenarENumerar(line);
 }
 function clicarPonto(p) {
-    // Clicar num ponto de outra linha entra automaticamente na edição dela.
+    // Clicar num ponto de outra linha entra automaticamente na edição dela (com foco no card).
     if (p.lineIndex != null && p.lineIndex !== currentLineIndex) {
-        currentLineIndex = p.lineIndex; atualizarPainelLinhas(); draw(); return;
+        focarLinha(p.lineIndex); return;
     }
     if (currentLineIndex < 0) { alert('Crie ou selecione uma linha primeiro.'); return; }
     pushUndo();
@@ -798,7 +813,7 @@ function atualizarPainelLinhas() {
                 <button class="btn-mini btn-inv">Inverter</button>
                 <button class="btn-mini btn-ren">Renomear</button>
                 <button class="btn-mini btn-del">Excluir</button></div>`;
-        div.addEventListener('click', () => { if (currentLineIndex !== li) { currentLineIndex = li; atualizarPainelLinhas(); draw(); } });
+        div.addEventListener('click', () => { if (currentLineIndex !== li) focarLinha(li); });
         div.querySelector('.btn-inv').addEventListener('click', (e) => { e.stopPropagation(); inverterLinha(li); });
         div.querySelector('.btn-ren').addEventListener('click', (e) => { e.stopPropagation(); renomearLinha(li, e); });
         div.querySelector('.btn-del').addEventListener('click', (e) => { e.stopPropagation(); excluirLinha(li); });
@@ -1359,6 +1374,7 @@ window.addEventListener('keydown', (e) => {
     const edModal = document.getElementById('editar-modal');
     if (e.key === 'Escape' && !edModal.classList.contains('hidden')) { edModal.classList.add('hidden'); return; }
     if (e.key === 'Escape' && !document.getElementById('ponto-info').classList.contains('hidden')) { fecharInfoPonto(); return; }
+    if (e.key === 'Escape' && document.querySelector('.tool-card:not(.hidden)')) { fecharCards(); return; }
     // Mini-card aberto: Enter confirma, Esc cancela (e não dispara atalhos do editor).
     if (!document.getElementById('mini-card').classList.contains('hidden')) {
         if (e.key === 'Enter') { e.preventDefault(); confirmarMiniCard(); }
@@ -1382,6 +1398,17 @@ document.getElementById('btn-desfazer').addEventListener('click', desfazer);
 document.getElementById('btn-detectar').addEventListener('click', detectarLinhas);
 document.getElementById('btn-divisoria').addEventListener('click', alternarModoDivisoria);
 document.getElementById('btn-excluir-pontos').addEventListener('click', alternarModoExcluir);
+
+// Toolbar de ícones: cada ícone abre/fecha o seu card (um por vez)
+document.querySelectorAll('#toolbar .tool-btn[data-card]').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const card = document.getElementById(btn.dataset.card);
+        const abrir = card.classList.contains('hidden');
+        fecharCards();
+        if (abrir) { card.classList.remove('hidden'); btn.classList.add('ativo'); }
+    });
+});
+document.querySelectorAll('.tool-card-x').forEach(x => x.addEventListener('click', fecharCards));
 
 // Modo visualização <-> edição
 const editarModal = document.getElementById('editar-modal');
