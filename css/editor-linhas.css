@@ -266,9 +266,36 @@ button.largo.ativo { background-color: var(--verde); border-color: var(--verde);
     background-color: rgba(55, 134, 64, 0.06);
 }
 .linha-item-cabecalho { display: flex; align-items: center; gap: 8px; }
-.linha-cor { width: 13px; height: 13px; border-radius: 50%; flex-shrink: 0; }
+.linha-cor {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    position: relative;
+    cursor: pointer;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.linha-cor:hover {
+    transform: scale(1.25);
+    box-shadow: 0 0 0 3px rgba(55, 134, 64, 0.25);
+}
+.linha-cor input[type=color] {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+    padding: 0;
+    border: none;
+}
 .linha-titulo { font-weight: 700; font-size: 13px; flex-grow: 1; color: #333; }
 .linha-contagem { font-size: 11.5px; color: #888; }
+/* Cards minimizados: nomes e ações só aparecem na linha aberta (selecionada) */
+.linha-item .linha-nomes, .linha-item .linha-acoes { display: none; }
+.linha-item.aberta .linha-nomes { display: block; }
+.linha-item.aberta .linha-acoes { display: flex; }
 .linha-nomes {
     font-size: 11px;
     color: #999;
@@ -277,7 +304,7 @@ button.largo.ativo { background-color: var(--verde); border-color: var(--verde);
     max-height: 46px;
     overflow-y: auto;
 }
-.linha-acoes { margin-top: 7px; display: flex; gap: 6px; flex-wrap: wrap; }
+.linha-acoes { margin-top: 7px; gap: 6px; flex-wrap: wrap; }
 .linha-acoes button, .btn-mini { font-size: 11px; padding: 4px 9px; }
 
 /* --- Mini-card de renomear --- */
@@ -404,9 +431,20 @@ button.largo.ativo { background-color: var(--verde); border-color: var(--verde);
     outline: 2px solid rgba(55, 134, 64, 0.35);
     border-color: var(--verde);
 }
-.pdf-bloco-ctrl { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
-.pdf-bloco-ctrl .check { flex: 1; }
-.pdf-fs { width: 70px; flex-shrink: 0; }
+.pdf-fs-handle {
+    position: absolute;
+    right: -6px;
+    bottom: -6px;
+    width: 12px;
+    height: 12px;
+    background: var(--verde);
+    border: 2px solid #fff;
+    border-radius: 3px;
+    cursor: ns-resize;
+    opacity: 0;
+    transition: opacity 0.12s ease;
+}
+.pdf-el:hover .pdf-fs-handle, .pdf-el.sel .pdf-fs-handle { opacity: 1; }
 .pdf-zoom-linha { display: flex; align-items: center; gap: 8px; }
 .pdf-zoom-linha input[type=range] { flex: 1; }
 .pdf-zoom-linha button { font-size: 11px; padding: 4px 9px; }

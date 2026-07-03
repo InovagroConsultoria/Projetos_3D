@@ -501,9 +501,15 @@ function ordenarLinha(line) {
 }
 function renumerar(line) {
     let contador = 1, prev = null;
+    // Se o nome editado terminar em "letra + número" (ex.: "A5"), a sequência continua dele (A6, A7...).
+    const re = new RegExp('^' + line.letra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*-?\\s*(\\d+)$', 'i');
     line.points.forEach(p => {
         if (prev && cruzaDivisoria(prev, p)) contador = 1; // recomeça após cruzar a divisa
-        if (p.customName) { p.name = p.customName; } else { p.name = line.letra + contador; contador++; }
+        if (p.customName) {
+            p.name = p.customName;
+            const m = p.customName.trim().match(re);
+            if (m) contador = parseInt(m[1], 10) + 1;
+        } else { p.name = line.letra + contador; contador++; }
         prev = p;
     });
 }
@@ -514,10 +520,14 @@ function removerDeLinhaSilencioso(p) {
     p.lineIndex = null; p.name = null; p.customName = null; reordenarENumerar(line);
 }
 function clicarPonto(p) {
+    // Clicar num ponto de outra linha entra automaticamente na edição dela.
+    if (p.lineIndex != null && p.lineIndex !== currentLineIndex) {
+        currentLineIndex = p.lineIndex; atualizarPainelLinhas(); draw(); return;
+    }
     if (currentLineIndex < 0) { alert('Crie ou selecione uma linha primeiro.'); return; }
     pushUndo();
     if (p.lineIndex === currentLineIndex) { removerDeLinhaSilencioso(p); }
-    else { if (p.lineIndex != null) removerDeLinhaSilencioso(p); lines[currentLineIndex].points.push(p); p.lineIndex = currentLineIndex; reordenarENumerar(lines[currentLineIndex]); }
+    else { lines[currentLineIndex].points.push(p); p.lineIndex = currentLineIndex; reordenarENumerar(lines[currentLineIndex]); }
     posMudanca();
 }
 function adicionarVarios(lista) {
@@ -528,11 +538,24 @@ function adicionarVarios(lista) {
     lista.forEach(p => { line.points.push(p); p.lineIndex = currentLineIndex; });
     reordenarENumerar(line); posMudanca();
 }
+// Caixa/contorno: pontos livres entram na linha atual; se a seleção só tem
+// pontos da linha atual, eles são removidos dela.
+function aplicarSelecao(lista) {
+    if (modoExcluir) { excluirVarios(lista); return; }
+    if (lista.length === 0) return;
+    const novos = lista.filter(p => p.lineIndex == null);
+    if (novos.length) { adicionarVarios(novos); return; }
+    if (currentLineIndex < 0) return;
+    const daLinha = lista.filter(p => p.lineIndex === currentLineIndex);
+    if (!daLinha.length) return;
+    pushUndo();
+    const line = lines[currentLineIndex];
+    daLinha.forEach(p => { const i = line.points.indexOf(p); if (i >= 0) line.points.splice(i, 1); p.lineIndex = null; p.name = null; p.customName = null; });
+    reordenarENumerar(line); posMudanca();
+}
 function selecionarCaixaMundo(wx0, wy0, wx1, wy1) {
     const x0 = Math.min(wx0, wx1), x1 = Math.max(wx0, wx1), y0 = Math.min(wy0, wy1), y1 = Math.max(wy0, wy1);
-    const dentro = p => catVisivel(p) && worldX(p) >= x0 && worldX(p) <= x1 && worldY(p) >= y0 && worldY(p) <= y1;
-    if (modoExcluir) { excluirVarios(points.filter(dentro)); return; }
-    adicionarVarios(points.filter(p => p.lineIndex == null && dentro(p)));
+    aplicarSelecao(points.filter(p => catVisivel(p) && worldX(p) >= x0 && worldX(p) <= x1 && worldY(p) >= y0 && worldY(p) <= y1));
 }
 function pontoEmPoligono(p, poly) {
     const x = worldX(p), y = worldY(p); let dentro = false;
@@ -544,8 +567,7 @@ function pontoEmPoligono(p, poly) {
 }
 function selecionarLasso(poly) {
     if (poly.length < 3) return;
-    if (modoExcluir) { excluirVarios(points.filter(p => catVisivel(p) && pontoEmPoligono(p, poly))); return; }
-    adicionarVarios(points.filter(p => p.lineIndex == null && catVisivel(p) && pontoEmPoligono(p, poly)));
+    aplicarSelecao(points.filter(p => catVisivel(p) && pontoEmPoligono(p, poly)));
 }
 // --- Mini-card (substitui prompt do navegador) ---
 let miniCardCb = null;
@@ -714,11 +736,12 @@ function atualizarPainelLinhas() {
     cont.innerHTML = '';
     lines.forEach((line, li) => {
         const div = document.createElement('div');
-        div.className = 'linha-item' + (li === currentLineIndex ? ' ativa' : '');
-        div.title = 'Clique para selecionar esta linha';
+        const aberta = li === currentLineIndex;
+        div.className = 'linha-item' + (aberta ? ' ativa aberta' : '');
+        div.title = aberta ? '' : 'Clique para selecionar e abrir esta linha';
         const nomes = line.points.map(p => p.name).join(', ') || '—';
         div.innerHTML = `<div class="linha-item-cabecalho">
-                <span class="linha-cor" style="background:${line.color}"></span>
+                <span class="linha-cor" style="background:${line.color}" title="Clique para trocar a cor"><input type="color" value="${line.color}"></span>
                 <span class="linha-titulo">Linha ${line.letra}</span>
                 <span class="linha-contagem">${line.points.length} grampos</span></div>
             <div class="linha-nomes">${nomes}</div>
@@ -726,10 +749,21 @@ function atualizarPainelLinhas() {
                 <button class="btn-mini btn-inv">Inverter</button>
                 <button class="btn-mini btn-ren">Renomear</button>
                 <button class="btn-mini btn-del">Excluir</button></div>`;
-        div.addEventListener('click', () => { currentLineIndex = li; atualizarPainelLinhas(); draw(); });
+        div.addEventListener('click', () => { if (currentLineIndex !== li) { currentLineIndex = li; atualizarPainelLinhas(); draw(); } });
         div.querySelector('.btn-inv').addEventListener('click', (e) => { e.stopPropagation(); inverterLinha(li); });
         div.querySelector('.btn-ren').addEventListener('click', (e) => { e.stopPropagation(); renomearLinha(li, e); });
         div.querySelector('.btn-del').addEventListener('click', (e) => { e.stopPropagation(); excluirLinha(li); });
+        // Troca de cor: clique na bolinha abre o seletor RGB do navegador.
+        const corInput = div.querySelector('.linha-cor input');
+        let corDirty = false;
+        corInput.addEventListener('click', (e) => e.stopPropagation());
+        corInput.addEventListener('input', (e) => {
+            if (!corDirty) { pushUndo(); corDirty = true; }
+            line.color = e.target.value;
+            div.querySelector('.linha-cor').style.background = line.color;
+            salvarAutosave(); draw();
+        });
+        corInput.addEventListener('change', () => { corDirty = false; atualizarPainelLinhas(); });
         cont.appendChild(div);
     });
 }
@@ -878,6 +912,17 @@ function construirConteudo() {
     el('pdf-el-info').classList.toggle('oculto', !el('pdf-show-info').checked);
     el('pdf-el-counts').classList.toggle('oculto', !el('pdf-show-counts').checked);
     el('pdf-el-legend').classList.toggle('oculto', !el('pdf-show-legend').checked);
+
+    // Alça de tamanho na própria caixa (arrasta para cima/baixo = menor/maior).
+    ['info', 'counts', 'legend'].forEach(k => {
+        const d = el('pdf-el-' + k);
+        if (!d.querySelector('.pdf-fs-handle')) {
+            const h = document.createElement('span');
+            h.className = 'pdf-fs-handle';
+            h.title = 'Arraste para ajustar o tamanho do texto';
+            d.appendChild(h);
+        }
+    });
 }
 
 function layoutPagina() {
@@ -903,13 +948,62 @@ function posicionar() {
     });
 }
 
+// Desenha o talude em VETOR dentro do retângulo (mm) — sem pixelização.
+function desenharVetorPDF(pdf, rect, pt) {
+    const vis = points.filter(catVisivel);
+    if (!vis.length) return;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+    vis.forEach(p => { const x = worldX(p), y = worldY(p); if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; });
+    const mg = 5; // margem interna (mm)
+    const s = Math.min((rect.w - 2 * mg) / Math.max(maxX - minX, 1e-6), (rect.h - 2 * mg) / Math.max(maxY - minY, 1e-6));
+    const ox = rect.x + (rect.w - (minX + maxX) * s) / 2;
+    const oy = rect.y + (rect.h - (minY + maxY) * s) / 2;
+    const X = p => ox + worldX(p) * s, Y = p => oy + worldY(p) * s;
+
+    // Polilinhas das linhas
+    pdf.setLineWidth(0.25);
+    lines.forEach(line => {
+        if (line.points.length < 2) return;
+        const rgb = hexRgb(line.color); pdf.setDrawColor(rgb[0], rgb[1], rgb[2]);
+        for (let i = 0; i < line.points.length - 1; i++) pdf.line(X(line.points[i]), Y(line.points[i]), X(line.points[i + 1]), Y(line.points[i + 1]));
+    });
+    // Divisórias (tracejadas, nome no pé)
+    if (dividers.length) {
+        pdf.setDrawColor(51, 51, 51); pdf.setLineWidth(0.3); pdf.setLineDashPattern([2, 1.5], 0);
+        dividers.forEach(d => {
+            const t = d.pts.map(v => ({ x: ox + (flipH ? -v.h : v.h) * s, y: oy + (-v.elev * exagero) * s }));
+            for (let i = 0; i < t.length - 1; i++) pdf.line(t[i].x, t[i].y, t[i + 1].x, t[i + 1].y);
+            if (d.name) {
+                const pe = t.reduce((a, b) => b.y > a.y ? b : a);
+                pdf.setFont('helvetica', 'bold'); pdf.setFontSize(pt(2.6)); pdf.setTextColor(34, 34, 34);
+                pdf.text(d.name, pe.x, pe.y + 3.4, { align: 'center' });
+                pdf.setFont('helvetica', 'normal');
+            }
+        });
+        pdf.setLineDashPattern([], 0);
+    }
+    // Pontos
+    vis.forEach(p => {
+        const rgb = hexRgb(p.lineIndex != null ? lines[p.lineIndex].color : CAT_COLOR[p.cat]);
+        pdf.setFillColor(rgb[0], rgb[1], rgb[2]);
+        pdf.circle(X(p), Y(p), 0.65, 'F');
+    });
+    // Nomes (prioriza o renomeado; senão o do CSV) com o ângulo configurado
+    pdf.setTextColor(17, 17, 17); pdf.setFontSize(pt(2.2 * (nameSize / 11)));
+    vis.forEach(p => {
+        const rot = p.name || p.id; if (!rot) return;
+        pdf.text(rot, X(p) + 0.9, Y(p) - 0.9, { angle: nameAngle });
+    });
+    pdf.setTextColor(0, 0, 0);
+}
+
 function gerarPDF() {
     const { jsPDF } = window.jspdf;
     const pg = pageMm();
     const pdf = new jsPDF({ orientation: pg.w >= pg.h ? 'landscape' : 'portrait', unit: 'mm', format: [pg.w, pg.h] });
     const L = pdfState.layout, pt = mm => mm / 0.352777;
     if (pdfState.bgImg) pdf.addImage(pdfState.bgImg, 'PNG', 0, 0, pg.w, pg.h);
-    pdf.addImage(pdfState.desenhoImg, 'PNG', L.desenho.x, L.desenho.y, L.desenho.w, L.desenho.w / pdfState.desenhoAspect);
+    desenharVetorPDF(pdf, { x: L.desenho.x, y: L.desenho.y, w: L.desenho.w, h: L.desenho.w / pdfState.desenhoAspect }, pt);
 
     pdf.setTextColor(0, 0, 0);
     if (el('pdf-show-info').checked) {
@@ -971,6 +1065,12 @@ function mostrarGuias(vx, hy) {
 function ligarArrastePrancha() {
     const page = el('pdf-page');
     page.addEventListener('mousedown', (e) => {
+        if (e.target.classList.contains('pdf-fs-handle')) {
+            const key = e.target.parentElement.dataset.el;
+            selecionarBloco(key);
+            pdfState.drag = { mode: 'fs', key, startY: e.clientY, startFs: pdfState.fs[key] };
+            e.preventDefault(); return;
+        }
         const handle = e.target.classList.contains('pdf-resize');
         const elDiv = e.target.closest('.pdf-el');
         if (!handle && !elDiv) { selecionarBloco(null); return; }
@@ -986,6 +1086,11 @@ function ligarArrastePrancha() {
     });
     window.addEventListener('mousemove', (e) => {
         if (!pdfState.drag) return;
+        if (pdfState.drag.mode === 'fs') {
+            const fator = 1 + (e.clientY - pdfState.drag.startY) / 120;
+            pdfState.fs[pdfState.drag.key] = Math.min(4, Math.max(0.4, pdfState.drag.startFs * fator));
+            posicionar(); return;
+        }
         const r = page.getBoundingClientRect(), k = pdfState.k;
         const mmx = (e.clientX - r.left) / k, mmy = (e.clientY - r.top) / k;
         if (pdfState.drag.mode === 'resize') { pdfState.layout.desenho.w = Math.max(20, mmx - pdfState.layout.desenho.x); posicionar(); return; }
@@ -1237,10 +1342,6 @@ el('pdf-orient').addEventListener('change', () => { layoutPagina(); salvarLayout
     el(id).addEventListener('input', () => { construirConteudo(); posicionar(); salvarLayoutPdf(); });
     el(id).addEventListener('change', () => { construirConteudo(); posicionar(); salvarLayoutPdf(); });
 });
-// Tamanho (escala) de cada bloco de texto no PDF
-[['pdf-fs-info', 'info'], ['pdf-fs-counts', 'counts'], ['pdf-fs-legend', 'legend']].forEach(([id, key]) => {
-    el(id).addEventListener('input', () => { pdfState.fs[key] = parseFloat(el(id).value); posicionar(); salvarLayoutPdf(); });
-});
 // Zoom da prancha e redefinição do layout
 el('pdf-zoom').addEventListener('input', () => { pdfState.zoom = parseFloat(el('pdf-zoom').value); layoutPagina(); });
 el('pdf-zoom-fit').addEventListener('click', () => { pdfState.zoom = 1; el('pdf-zoom').value = '1'; layoutPagina(); });
@@ -1248,7 +1349,6 @@ el('pdf-redefinir').addEventListener('click', () => {
     if (!confirm('Redefinir o layout da prancha para o padrão?')) return;
     try { localStorage.removeItem(PDF_KEY); } catch (e) {}
     pdfState.layout = layoutPadrao(); pdfState.fs = { info: 1, counts: 1, legend: 1 };
-    ['info', 'counts', 'legend'].forEach(k => { el('pdf-fs-' + k).value = '1'; });
     construirConteudo(); layoutPagina();
 });
 window.addEventListener('resize', () => { if (!el('pdf-modal').classList.contains('hidden')) layoutPagina(); });
@@ -1263,7 +1363,4 @@ document.getElementById('chk-flip').addEventListener('change', (e) => {
     flipH = e.target.checked;
     lines.forEach(reordenarENumerar); // "direita" mudou: renumera por proximidade
     fitView(); posMudanca();
-});
-document.getElementById('slider-exagero').addEventListener('input', (e) => {
-    exagero = parseFloat(e.target.value); document.getElementById('valor-exagero').textContent = exagero.toFixed(1) + '×'; fitView(); draw();
 });
