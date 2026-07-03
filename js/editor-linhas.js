@@ -38,6 +38,17 @@ let nameSize = 11;       // tamanho da fonte dos rótulos (px)
 let flipH = false;       // espelha a vista na horizontal (talude visto de trás)
 let enabledCats = new Set(['outros']); // por padrão só os grampos de grade
 let modoExcluir = false; // modo de exclusão de pontos (clique/caixa/contorno excluem)
+let modoEdicao = false;  // false = Visualizador de Linhas (padrão); true = edição local
+
+function setModo(edicao) {
+    modoEdicao = edicao;
+    document.body.classList.toggle('modo-visualizacao', !edicao);
+    document.getElementById('titulo-talude').textContent = (edicao ? 'Editor — ' : 'Visualizador de Linhas — ') + nomeTalude;
+    const rot = document.getElementById('rotulo-categorias');
+    if (rot) rot.textContent = edicao ? 'Categorias visíveis' : 'Legenda';
+    if (!edicao) { cancelarSelecao(); fecharMiniCard(); }
+    montarFiltroCategorias(); atualizarPainelLinhas(); atualizarStatus(); draw();
+}
 
 // --- Vista ---
 const view = { scale: 1, ox: 0, oy: 0 };
@@ -166,6 +177,7 @@ function iniciar(csvText) {
     montarFiltroCategorias();
     atualizarAvisoSemNome();
     restaurarAutosave();
+    if (lines.length === 0) detectarLinhasAuto(); // visualizador: linhas pré-definidas carregadas automaticamente
     aplicarGuia(); // se houver eixo-guia salvo, reprojeta por estaqueamento
     resizeCanvas();
     fitView();
@@ -173,7 +185,7 @@ function iniciar(csvText) {
 
     const ls = document.getElementById('loading-screen');
     ls.classList.add('hidden'); setTimeout(() => { ls.style.display = 'none'; }, 400);
-    document.getElementById('titulo-talude').textContent = 'Editor — ' + nomeTalude;
+    setModo(false); // abre no modo Visualizador de Linhas
     sugerirProximaLetra();
 }
 
@@ -446,7 +458,28 @@ function atualizarAvisoSemNome() {
     }
 }
 
-// Agrupa os grampos em linhas a partir dos nomes do CSV original.
+// Núcleo da detecção: agrupa os grampos com nome de linha e monta as linhas.
+function montarLinhasDetectadas(comNome) {
+    points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; });
+    lines = [];
+    const grupos = {};
+    comNome.forEach(p => { const k = chaveLinha(p); (grupos[k] = grupos[k] || []).push(p); });
+    Object.keys(grupos).sort().forEach(k => {
+        const li = lines.length;
+        const line = { letra: k, color: PALETTE[li % PALETTE.length], inverted: false, points: grupos[k] };
+        grupos[k].forEach(p => { p.lineIndex = li; enabledCats.add(p.cat); });
+        lines.push(line); reordenarENumerar(line);
+    });
+    currentLineIndex = lines.length ? 0 : -1;
+}
+// Carregamento automático (visualizador): sem confirmações nem avisos.
+function detectarLinhasAuto() {
+    const comNome = points.filter(p => !p.deleted && CATS_LINHA.has(p.cat) && chaveLinha(p));
+    if (!comNome.length) return;
+    montarLinhasDetectadas(comNome);
+    salvarAutosave();
+}
+// Agrupa os grampos em linhas a partir dos nomes do CSV original (botão).
 function detectarLinhas() {
     const alvo = points.filter(p => !p.deleted && CATS_LINHA.has(p.cat));
     if (alvo.length === 0) { alert('Não há grampos de grade ou de fechamento neste CSV.'); return; }
@@ -461,17 +494,7 @@ function detectarLinhas() {
     if (!confirm(msg)) return;
 
     pushUndo();
-    points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; });
-    lines = [];
-    const grupos = {};
-    comNome.forEach(p => { const k = chaveLinha(p); (grupos[k] = grupos[k] || []).push(p); });
-    Object.keys(grupos).sort().forEach(k => {
-        const li = lines.length;
-        const line = { letra: k, color: PALETTE[li % PALETTE.length], inverted: false, points: grupos[k] };
-        grupos[k].forEach(p => { p.lineIndex = li; enabledCats.add(p.cat); });
-        lines.push(line); reordenarENumerar(line);
-    });
-    currentLineIndex = lines.length ? 0 : -1;
+    montarLinhasDetectadas(comNome);
     montarFiltroCategorias(); sugerirProximaLetra(); posMudanca();
     alert(`${lines.length} linha(s) detectada(s) a partir do CSV.` + (semNome > 0 ? `\n${semNome} grampo(s) sem nome ficaram de fora.` : ''));
 }
@@ -588,6 +611,19 @@ function abrirMiniCard(screenX, screenY, label, valor, cb) {
 }
 function fecharMiniCard() { document.getElementById('mini-card').classList.add('hidden'); miniCardCb = null; }
 function confirmarMiniCard() { const v = document.getElementById('mini-card-input').value; const cb = miniCardCb; fecharMiniCard(); if (cb) cb(v); }
+
+// Modo visualização: clique num ponto mostra nome e coordenadas.
+function mostrarInfoPonto(p) {
+    const corpo = document.getElementById('ponto-info-corpo');
+    let html = `<b>${escapeHtml(p.name || p.id)}</b><br>`;
+    if (p.name && p.name !== p.id) html += `<small>Nome original: ${escapeHtml(p.id)}</small><br>`;
+    if (p.lineIndex != null) html += `Linha: <b>${escapeHtml(lines[p.lineIndex].letra)}</b><br>`;
+    html += `Categoria: ${CAT_LABEL[p.cat]}<br>`;
+    html += `E: ${p.e.toFixed(3)}<br>N: ${p.n.toFixed(3)}<br>Cota: ${p.elev.toFixed(3)}`;
+    corpo.innerHTML = html;
+    document.getElementById('ponto-info').classList.remove('hidden');
+}
+function fecharInfoPonto() { document.getElementById('ponto-info').classList.add('hidden'); }
 
 function editarPonto(p) {
     if (p.lineIndex == null) { alert('Esse ponto ainda não está em nenhuma linha.'); return; }
@@ -719,15 +755,28 @@ function montarFiltroCategorias() {
     CATS.forEach(c => {
         const n = points.filter(p => !p.deleted && p.cat === c.key).length;
         if (n === 0) return;
-        const id = 'chk-cat-' + c.key;
-        const div = document.createElement('label'); div.className = 'check cat-check';
-        div.innerHTML = `<input type="checkbox" id="${id}" ${enabledCats.has(c.key) ? 'checked' : ''}>
-            <span class="cat-bola" style="background:${c.color}"></span> ${c.label} (${n})`;
-        div.querySelector('input').addEventListener('change', (e) => {
-            if (e.target.checked) enabledCats.add(c.key); else enabledCats.delete(c.key);
-            hoveredPoint = null; draw();
-        });
-        cont.appendChild(div);
+        if (modoEdicao) {
+            const id = 'chk-cat-' + c.key;
+            const div = document.createElement('label'); div.className = 'check cat-check';
+            div.innerHTML = `<input type="checkbox" id="${id}" ${enabledCats.has(c.key) ? 'checked' : ''}>
+                <span class="cat-bola" style="background:${c.color}"></span> ${c.label} (${n})`;
+            div.querySelector('input').addEventListener('change', (e) => {
+                if (e.target.checked) enabledCats.add(c.key); else enabledCats.delete(c.key);
+                hoveredPoint = null; draw();
+            });
+            cont.appendChild(div);
+        } else {
+            // Legenda (visualizador): item clicável mostra/oculta a categoria.
+            const item = document.createElement('div');
+            item.className = 'legenda-item' + (enabledCats.has(c.key) ? '' : ' off');
+            item.title = 'Clique para mostrar/ocultar';
+            item.innerHTML = `<span class="cat-bola" style="background:${c.color}"></span><span class="leg-rotulo">${c.label}</span><b>${n}</b>`;
+            item.addEventListener('click', () => {
+                if (enabledCats.has(c.key)) enabledCats.delete(c.key); else enabledCats.add(c.key);
+                hoveredPoint = null; montarFiltroCategorias(); draw();
+            });
+            cont.appendChild(item);
+        }
     });
 }
 function atualizarPainelLinhas() {
@@ -1167,6 +1216,13 @@ canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     if (e.button === 1 || spaceDown || e.ctrlKey) { pointer.down = true; pointer.panning = true; pointer.lastX = mx; pointer.lastY = my; e.preventDefault(); return; }
     if (e.button !== 0) return;
+    // Modo visualização: arrastar = mover a tela; clique num ponto = informações.
+    if (!modoEdicao) {
+        pointer.down = true; pointer.panning = true;
+        pointer.startX = mx; pointer.startY = my; pointer.lastX = mx; pointer.lastY = my;
+        pointer.downPoint = pontoEm(mx, my);
+        e.preventDefault(); return;
+    }
     if (addingDivider || addingGuide) { pointer.down = true; pointer.dragging = false; pointer.startX = mx; pointer.startY = my; e.preventDefault(); return; }
     // Na vista de topo (sem desenhar guia) o botão esquerdo só faz pan; sem atribuição de pontos.
     if (topView) { pointer.down = true; pointer.panning = true; pointer.lastX = mx; pointer.lastY = my; e.preventDefault(); return; }
@@ -1208,7 +1264,16 @@ canvas.addEventListener('mousemove', (e) => {
 window.addEventListener('mouseup', (e) => {
     if (!pointer.down) return;
     pointer.down = false;
-    if (pointer.panning) { pointer.panning = false; return; }
+    if (pointer.panning) {
+        pointer.panning = false;
+        // Visualizador: clique parado sobre um ponto abre as informações.
+        if (!modoEdicao && pointer.downPoint) {
+            const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+            if (Math.abs(mx - pointer.startX) + Math.abs(my - pointer.startY) < 5) mostrarInfoPonto(pointer.downPoint);
+        }
+        pointer.downPoint = null;
+        return;
+    }
 
     // Fim do arraste de um vértice de divisória
     if (draggingVertex) { const moved = draggingVertex.moved; draggingVertex = null; if (moved) salvarAutosave(); return; }
@@ -1240,7 +1305,9 @@ window.addEventListener('mouseup', (e) => {
 
 canvas.addEventListener('contextmenu', (e) => {
     e.preventDefault(); const rect = canvas.getBoundingClientRect();
-    const p = pontoEm(e.clientX - rect.left, e.clientY - rect.top); if (p) editarPonto(p);
+    const p = pontoEm(e.clientX - rect.left, e.clientY - rect.top);
+    if (!p) return;
+    if (modoEdicao) editarPonto(p); else mostrarInfoPonto(p);
 });
 
 // Duplo-clique conclui a divisória ou o eixo-guia em construção
@@ -1289,6 +1356,9 @@ window.addEventListener('keydown', (e) => {
     }
     const ajudaModal = document.getElementById('ajuda-modal');
     if (e.key === 'Escape' && !ajudaModal.classList.contains('hidden')) { ajudaModal.classList.add('hidden'); return; }
+    const edModal = document.getElementById('editar-modal');
+    if (e.key === 'Escape' && !edModal.classList.contains('hidden')) { edModal.classList.add('hidden'); return; }
+    if (e.key === 'Escape' && !document.getElementById('ponto-info').classList.contains('hidden')) { fecharInfoPonto(); return; }
     // Mini-card aberto: Enter confirma, Esc cancela (e não dispara atalhos do editor).
     if (!document.getElementById('mini-card').classList.contains('hidden')) {
         if (e.key === 'Enter') { e.preventDefault(); confirmarMiniCard(); }
@@ -1312,6 +1382,14 @@ document.getElementById('btn-desfazer').addEventListener('click', desfazer);
 document.getElementById('btn-detectar').addEventListener('click', detectarLinhas);
 document.getElementById('btn-divisoria').addEventListener('click', alternarModoDivisoria);
 document.getElementById('btn-excluir-pontos').addEventListener('click', alternarModoExcluir);
+
+// Modo visualização <-> edição
+const editarModal = document.getElementById('editar-modal');
+document.getElementById('btn-editar').addEventListener('click', () => editarModal.classList.remove('hidden'));
+document.getElementById('editar-cancelar').addEventListener('click', () => editarModal.classList.add('hidden'));
+document.getElementById('editar-continuar').addEventListener('click', () => { editarModal.classList.add('hidden'); setModo(true); });
+editarModal.addEventListener('click', (e) => { if (e.target === editarModal) editarModal.classList.add('hidden'); });
+document.getElementById('ponto-info-fechar').addEventListener('click', fecharInfoPonto);
 document.getElementById('btn-topo').addEventListener('click', alternarVistaTopo);
 document.getElementById('btn-guia').addEventListener('click', alternarModoGuia);
 
