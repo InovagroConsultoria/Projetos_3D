@@ -34,11 +34,11 @@ export const OBRAS = [
         id: "perau",
         nome: "Obra do Perau",
         foto: "Fotos/obra_perau_web.jpg",
-        sub: "Modelo 3D e edição disponíveis",
+        sub: "Modelo 3D e linhas disponíveis",
         cardLink: null,
         acoes: [
             { label: "Visualizar 3D", viz: { glb: "Superficie/Perau/Perau_2506.glb", csv: "Superficie/Perau/Todos_grampos_perau.csv", data: "25/06/2026" } },
-            { label: "Editor de linhas", editor: { csv: "Superficie/Perau/Todos_grampos_perau.csv", nome: "Obra do Perau" } },
+            { label: "Visualizador de linhas", editor: { csv: "Superficie/Perau/Todos_grampos_perau.csv", nome: "Obra do Perau" } },
         ],
     },
 ];

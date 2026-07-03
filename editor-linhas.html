@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
-    <title>Editor de Linhas — Inovagro 3D</title>
+    <title>Visualizador de Linhas — Inovagro 3D</title>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
@@ -29,15 +29,15 @@
 
     <!-- Painel de controles (esquerda) -->
     <div id="painel-controles">
-        <h4>Linhas</h4>
-        <div class="bloco">
+        <h4 class="so-edicao">Linhas</h4>
+        <div class="bloco so-edicao">
             <label for="input-letra">Letra da linha</label>
             <div class="linha-form">
                 <input type="text" id="input-letra" maxlength="3" placeholder="A" autocomplete="off">
                 <button id="btn-nova-linha" class="primario">Nova linha</button>
             </div>
         </div>
-        <div class="bloco">
+        <div class="bloco so-edicao">
             <button id="btn-detectar" class="largo">⚡ Linhas pré-definidas (CSV)</button>
             <button id="btn-desfazer" class="largo">↶ Desfazer <kbd>Ctrl+Z</kbd></button>
             <div id="aviso-sem-nome" class="aviso hidden"></div>
@@ -55,12 +55,12 @@
             <input type="range" id="slider-tam-nome" min="7" max="18" step="1" value="11">
         </div>
         <div class="bloco">
-            <label>Categorias visíveis</label>
+            <label id="rotulo-categorias">Categorias visíveis</label>
             <div id="filtro-categorias"></div>
         </div>
 
-        <h4>Ferramentas</h4>
-        <div class="bloco">
+        <h4 class="so-edicao">Ferramentas</h4>
+        <div class="bloco so-edicao">
             <button id="btn-excluir-pontos" class="largo">🗑️ Excluir pontos</button>
             <div id="excluidos-status" class="excluidos"></div>
             <button id="btn-divisoria" class="largo">✂️ Adicionar divisória</button>
@@ -70,12 +70,13 @@
             <div id="guia-status"></div>
         </div>
 
-        <h4>Exportar</h4>
+        <h4>Ações</h4>
         <div class="bloco botoes">
             <button id="btn-enquadrar" class="largo">Enquadrar</button>
-            <button id="btn-exportar" class="primario">Exportar CSV</button>
-            <button id="btn-pdf" class="primario">Exportar PDF</button>
-            <button id="btn-limpar" class="perigo">Excluir todas as linhas</button>
+            <button id="btn-editar" class="primario so-visu">✏️ Editar</button>
+            <button id="btn-exportar" class="primario so-edicao">Exportar CSV</button>
+            <button id="btn-pdf" class="primario so-edicao">Exportar PDF</button>
+            <button id="btn-limpar" class="perigo so-edicao">Excluir todas as linhas</button>
         </div>
 
         <div id="status-barra"></div>
@@ -114,6 +115,26 @@
     <div id="painel-linhas">
         <h3>Linhas criadas</h3>
         <div id="lista-linhas"><small>Nenhuma linha ainda.</small></div>
+    </div>
+
+    <!-- Informações do ponto (modo visualização) -->
+    <div id="ponto-info" class="hidden">
+        <span id="ponto-info-fechar" title="Fechar">✕</span>
+        <h4>Ponto selecionado</h4>
+        <div id="ponto-info-corpo"></div>
+    </div>
+
+    <!-- Modal: entrar no modo edição -->
+    <div id="editar-modal" class="hidden">
+        <div class="editar-modal-inner">
+            <div class="editar-icone">✏️</div>
+            <h3>Modo edição</h3>
+            <p>Modo edição apenas local. Para implementar alterações, envie os pontos e solicite ao administrador da página pelo e-mail: <a href="mailto:consultoriainovagro@gmail.com">consultoriainovagro@gmail.com</a></p>
+            <div class="editar-acoes">
+                <button id="editar-cancelar">Cancelar</button>
+                <button id="editar-continuar" class="primario">Continuar</button>
+            </div>
+        </div>
     </div>
 
     <!-- Mini-card para renomear ponto / linha / divisória -->

@@ -334,6 +334,99 @@ button.largo.ativo { background-color: var(--verde); border-color: var(--verde);
 #mini-card-ok:hover { background: var(--verde-escuro); }
 #mini-card-cancel { padding: 6px 9px; }
 
+/* --- Modo visualização (padrão) vs edição --- */
+body.modo-visualizacao .so-edicao { display: none !important; }
+body:not(.modo-visualizacao) .so-visu { display: none !important; }
+body.modo-visualizacao .linha-acoes { display: none !important; }
+body.modo-visualizacao .linha-cor { pointer-events: none; }
+
+/* Legenda (modo visualização) */
+.legenda-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12.5px;
+    color: #444;
+    cursor: pointer;
+    user-select: none;
+    padding: 5px 7px;
+    border-radius: 8px;
+    border: 1px solid transparent;
+    transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+.legenda-item:hover { background-color: #eef4ef; border-color: #dfe7e1; }
+.legenda-item .leg-rotulo { flex: 1; }
+.legenda-item b { color: #222; }
+.legenda-item.off { opacity: 0.45; text-decoration: line-through; }
+.legenda-item.off .cat-bola { filter: grayscale(100%); }
+
+/* Informações do ponto (modo visualização) */
+#ponto-info {
+    position: absolute;
+    bottom: 16px;
+    right: 15px;
+    z-index: 12;
+    background: rgba(255, 255, 255, 0.96);
+    border: 1px solid var(--borda);
+    border-radius: 12px;
+    padding: 12px 16px;
+    min-width: 190px;
+    max-width: 250px;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.12);
+    font-size: 13px;
+    line-height: 1.55;
+    color: #444;
+}
+#ponto-info.hidden { display: none; }
+#ponto-info h4 {
+    margin: 0 0 6px;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--verde);
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+}
+#ponto-info b { color: #222; }
+#ponto-info small { color: #999; }
+#ponto-info-fechar {
+    position: absolute;
+    top: 8px;
+    right: 11px;
+    color: #aaa;
+    cursor: pointer;
+    font-size: 13px;
+    user-select: none;
+}
+#ponto-info-fechar:hover { color: #333; }
+
+/* Modal "Editar" */
+#editar-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    background: rgba(20, 30, 24, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+#editar-modal.hidden { display: none; }
+.editar-modal-inner {
+    background: #fff;
+    border-radius: 14px;
+    width: 420px;
+    max-width: 100%;
+    padding: 28px 26px 22px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+    text-align: center;
+}
+.editar-icone { font-size: 34px; margin-bottom: 8px; }
+.editar-modal-inner h3 { margin: 0 0 10px; font-size: 17px; color: #333; }
+.editar-modal-inner p { margin: 0 0 20px; font-size: 13.5px; color: #555; line-height: 1.6; text-align: left; }
+.editar-modal-inner a { color: var(--verde-escuro); }
+.editar-acoes { display: flex; gap: 10px; }
+.editar-acoes button { flex: 1; padding: 10px; }
+
 /* --- Modal "Como usar" --- */
 #ajuda-modal {
     position: fixed;
