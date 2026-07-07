@@ -58,6 +58,18 @@ canvas { display: block; }
     transition: background 0.15s ease, color 0.15s ease;
 }
 #home-link:hover { background: var(--verde); color: #fff; }
+.link-vista {
+    border: 1px solid #cfd8d2;
+    color: #3a463d;
+    background: #fff;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 15px;
+    border-radius: 999px;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.link-vista:hover { background: var(--verde); border-color: var(--verde); color: #fff; }
 
 /* --- Menu de controles (engrenagem -> painel) --- */
 #controls {
@@ -152,7 +164,7 @@ canvas { display: block; }
 #controls button.primario { background-color: var(--verde); border-color: var(--verde); color: #fff; }
 #controls button.primario:hover { background-color: var(--verde-escuro); border-color: var(--verde-escuro); }
 #searchButton { flex-shrink: 0; }
-#frameButton { width: 100%; margin-top: 8px; }
+#frameButton, #measureButton { width: 100%; margin-top: 8px; }
 
 #label-filter-container {
     max-height: 150px;

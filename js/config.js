@@ -38,7 +38,7 @@ export const OBRAS = [
         cardLink: null,
         acoes: [
             { label: "Visualizar 3D", viz: { glb: "Superficie/Perau/Perau_2506.glb", csv: "Superficie/Perau/Todos_grampos_perau.csv", data: "25/06/2026" } },
-            { label: "Visualização 2D", editor: { csv: "Superficie/Perau/Todos_grampos_perau.csv", nome: "Obra do Perau" } },
+            { label: "Visualização 2D", editor: { csv: "Superficie/Perau/Todos_grampos_perau.csv", nome: "Obra do Perau", glb: "Superficie/Perau/Perau_2506.glb", data: "25/06/2026" } },
         ],
     },
 ];

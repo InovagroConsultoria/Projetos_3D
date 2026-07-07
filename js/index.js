@@ -42,11 +42,15 @@ for (const obra of OBRAS) {
             const a = document.createElement("a");
             a.className = "obra-btn" + (acao.principal || acao.viz ? " principal" : "");
             if (acao.viz) {
-                const p = new URLSearchParams({ v: "2", glb: acao.viz.glb, csv: acao.viz.csv });
+                const p = new URLSearchParams({ v: "2", glb: acao.viz.glb, csv: acao.viz.csv, nome: obra.nome });
                 if (acao.viz.data) p.set("data", acao.viz.data);
+                if (acao.viz.areas) p.set("areas", acao.viz.areas);
                 a.href = `visualizador.html?${p.toString()}`;
             } else if (acao.editor) {
                 const p = new URLSearchParams({ csv: acao.editor.csv, nome: acao.editor.nome });
+                if (acao.editor.glb) p.set("glb", acao.editor.glb);
+                if (acao.editor.data) p.set("data", acao.editor.data);
+                if (acao.editor.areas) p.set("areas", acao.editor.areas);
                 a.href = `editor-linhas.html?${p.toString()}`;
             } else {
                 a.href = acao.href;

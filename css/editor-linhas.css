@@ -66,6 +66,18 @@ body {
     transition: background 0.15s ease, color 0.15s ease;
 }
 #home-link:hover { background: var(--verde); color: #fff; }
+.link-vista {
+    border: 1px solid #cfd8d2;
+    color: #3a463d;
+    background: #fff;
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 7px 15px;
+    border-radius: 999px;
+    transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+.link-vista:hover { background: var(--verde); border-color: var(--verde); color: #fff; }
 
 /* --- Barra de ícones + cards de interação --- */
 #toolbar {
