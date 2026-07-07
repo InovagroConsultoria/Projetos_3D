@@ -7,7 +7,8 @@
 
 const params = new URLSearchParams(window.location.search);
 const csvFileURL = params.get('csv');
-const nomeTalude = params.get('nome') || 'Talude';
+const areasFileURL = params.get('areas');
+let nomeTalude = params.get('nome') || 'Talude';
 
 const canvas = document.getElementById('editor-canvas');
 const ctx = canvas.getContext('2d');
@@ -30,6 +31,11 @@ let originalRows = [];
 let delimiter = ',';
 let points = [];         // { rowIndex, id, cat, e, n, hPCA, h, elev, lineIndex, name, customName }
 let mE = 0, mN = 0;      // centro (média) de E/N — usado nas projeções
+let projUX = 1, projUY = 0; // eixo principal (PCA) — reutilizado para projetar as áreas
+
+// --- Áreas (telas de proteção): polígonos transparentes sobre o talude ---
+let areas = [];          // { nome, cor, areaFile, pts: [{e, n, elev, h}] }
+let showAreas = true;
 let exagero = 1.0;
 let showNames = false;
 let rotularTodos = false; // ao gerar o PDF: rotula todos os grampos (nome ou id do CSV)
@@ -39,6 +45,10 @@ let flipH = false;       // espelha a vista na horizontal (talude visto de trás
 let enabledCats = new Set(['outros']); // por padrão só os grampos de grade
 let modoExcluir = false; // modo de exclusão de pontos (clique/caixa/contorno excluem)
 let modoEdicao = false;  // false = Visualizador de Linhas (padrão); true = edição local
+
+// --- Medição de distância entre pontos conhecidos ---
+let medindo = false;
+let medA = null, medB = null;
 
 function setModo(edicao) {
     modoEdicao = edicao;
@@ -102,18 +112,61 @@ let spaceDown = false;
 
 const undoStack = [];
 const UNDO_MAX = 60;
-const STORAGE_KEY = 'editor-linhas:' + (csvFileURL || 'sem-csv');
+let STORAGE_KEY = 'editor-linhas:' + (csvFileURL || 'sem-csv');
 
 // =============================================================
 //  Carregamento
 // =============================================================
 if (!csvFileURL) {
-    showError('Nenhum projeto especificado. Selecione um talude no menu.');
+    mostrarTelaAbrirLocal();
 } else {
     fetch(csvFileURL)
         .then(r => { if (!r.ok) throw new Error(r.statusText); return r.text(); })
         .then(txt => iniciar(txt))
         .catch(err => { console.error('Falha ao carregar CSV:', err); showError('Não foi possível carregar os pontos (CSV).', csvFileURL); });
+}
+
+// Sem projeto na URL: oferece abrir um CSV do computador (edição local).
+function mostrarTelaAbrirLocal() {
+    const ls = document.getElementById('loading-screen');
+    ls.classList.remove('hidden'); ls.style.display = 'flex';
+    ls.innerHTML = `<div style="font-size:42px;margin-bottom:14px;">📂</div>
+        <div id="loading-text">Nenhum projeto especificado.<br><small style="color:#777">Selecione um talude no menu ou abra um CSV do seu computador.</small></div>
+        <button class="error-button" id="btn-abrir-local" style="border:none;cursor:pointer;font-family:inherit;">📂 Carregar CSV do computador</button>
+        <a class="error-button" style="background:#6c757d" href="index.html">Voltar ao menu</a>`;
+    document.getElementById('btn-abrir-local').addEventListener('click', () => document.getElementById('csv-local').click());
+}
+
+// Reinicia todo o estado para carregar um novo conjunto de pontos.
+function resetarEstado() {
+    points = []; lines = []; dividers = []; guide = []; areas = [];
+    undoStack.length = 0;
+    currentLineIndex = -1; autoDetectou = false;
+    flipH = false; topView = false; modoExcluir = false;
+    medindo = false; medA = null; medB = null;
+    enabledCats = new Set(['outros']);
+    const chk = document.getElementById('chk-flip'); if (chk) chk.checked = false;
+    document.getElementById('btn-medir').classList.remove('ativo');
+    document.getElementById('btn-excluir-pontos').classList.remove('ativo');
+    document.getElementById('btn-topo').classList.remove('ativo');
+    fecharCards(); fecharInfoPonto();
+}
+
+// Abre um CSV do computador (sem passar pelo GitHub) — edição local.
+function carregarCsvLocal(file) {
+    const reader = new FileReader();
+    reader.onload = () => {
+        resetarEstado();
+        nomeTalude = file.name.replace(/\.(csv|txt)$/i, '') + ' (local)';
+        STORAGE_KEY = 'editor-linhas:local:' + file.name;
+        PDF_KEY = STORAGE_KEY + ':pdf';
+        const ls = document.getElementById('loading-screen');
+        ls.style.display = 'flex'; ls.classList.remove('hidden');
+        try { iniciar(String(reader.result)); }
+        catch (e) { console.error(e); showError('Não foi possível ler este CSV.', file.name); }
+    };
+    reader.onerror = () => showError('Não foi possível ler o arquivo.', file.name);
+    reader.readAsText(file);
 }
 
 function showError(msg, detalhe) {
@@ -179,6 +232,7 @@ function iniciar(csvText) {
     brutos.forEach(p => { const de = p.e - mE, dn = p.n - mN; sxx += de * de; syy += dn * dn; sxy += de * dn; });
     const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
     const ux = Math.cos(ang), uy = Math.sin(ang);
+    projUX = ux; projUY = uy;
 
     points = brutos.map(p => {
         const hPCA = (p.e - mE) * ux + (p.n - mN) * uy;
@@ -194,6 +248,7 @@ function iniciar(csvText) {
     restaurarAutosave();
     if (lines.length === 0) detectarLinhasAuto(); // visualizador: linhas pré-definidas carregadas automaticamente
     aplicarGuia(); // se houver eixo-guia salvo, reprojeta por estaqueamento
+    if (autoDetectou) inferirDivisorias(); // divisórias visíveis já no 1º carregamento (numeração do CSV)
     resizeCanvas();
     fitView();
     atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarExcluidos(); atualizarStatus(); draw();
@@ -202,6 +257,7 @@ function iniciar(csvText) {
     ls.classList.add('hidden'); setTimeout(() => { ls.style.display = 'none'; }, 400);
     setModo(false); // abre no modo Visualizador de Linhas
     sugerirProximaLetra();
+    carregarAreas(); // telas de proteção (arquivo opcional ?areas=)
 }
 
 // =============================================================
@@ -239,7 +295,92 @@ function chainage(e, n) {
 function aplicarGuia() {
     const usar = guide.length >= 2;
     points.forEach(p => { p.h = usar ? chainage(p.e, p.n) : p.hPCA; });
+    projetarAreas();
     lines.forEach(reordenarENumerar);
+}
+
+// =============================================================
+//  Áreas (telas de proteção)
+// =============================================================
+function carregarAreas() {
+    if (!areasFileURL) return;
+    fetch(areasFileURL, { cache: 'no-store' })
+        .then(r => { if (!r.ok) throw new Error(r.statusText); return r.text(); })
+        .then(txt => { areas = parseAreas(txt); projetarAreas(); montarFiltroCategorias(); draw(); })
+        .catch(err => console.warn('Áreas não carregadas:', err));
+}
+// Formato: [NOME; cor=#rrggbb; area=123.4] seguido de linhas "E; N; Elev".
+function parseAreas(txt) {
+    const out = [];
+    let atual = null;
+    const CORES_AREA = ['#00c8ff', '#ff8c00', '#e6194B', '#3cb44b', '#911eb4', '#f032e6'];
+    txt.split(/\r?\n/).forEach(linha => {
+        const l = linha.trim();
+        if (!l || l.startsWith('#')) return;
+        const cab = l.match(/^\[([^\]]+)\]/); // tolera comentários após o "]"
+        if (cab) {
+            const partes = cab[1].split(';').map(s => s.trim());
+            const nome = partes[0] || ('Área ' + (out.length + 1));
+            let cor = null, areaFile = null;
+            partes.slice(1).forEach(p => {
+                const m = p.match(/^(cor|area)\s*=\s*(.*)$/i);
+                if (!m) return;
+                if (m[1].toLowerCase() === 'cor' && m[2]) cor = m[2].trim();
+                if (m[1].toLowerCase() === 'area') { const v = parseFloat(m[2].replace(',', '.')); if (!Number.isNaN(v)) areaFile = v; }
+            });
+            atual = { nome, cor: cor || CORES_AREA[out.length % CORES_AREA.length], areaFile, pts: [] };
+            out.push(atual);
+            return;
+        }
+        if (!atual) return;
+        const c = l.split(/[;,\t]/).map(s => parseFloat(s.trim().replace(',', '.')));
+        if (c.length >= 3 && c.every(v => !Number.isNaN(v))) atual.pts.push({ e: c[0], n: c[1], elev: c[2], h: 0 });
+    });
+    return out.filter(a => a.pts.length >= 3);
+}
+function projetarAreas() {
+    const usarGuia = guide.length >= 2;
+    areas.forEach(a => a.pts.forEach(v => {
+        v.h = usarGuia ? chainage(v.e, v.n) : ((v.e - mE) * projUX + (v.n - mN) * projUY);
+    }));
+}
+// Área EM PLANTA (projeção horizontal E×N) — mesma convenção do levantamento;
+// é o valor usado quando o arquivo não traz a área.
+function areaPlanta(pts) {
+    let nz = 0;
+    for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[(i + 1) % pts.length];
+        nz += (a.e - b.e) * (a.n + b.n);
+    }
+    return Math.abs(nz) / 2;
+}
+function areaValor(a) {
+    if (a.areaFile != null) return { v: a.areaFile, fonte: 'arquivo' };
+    return { v: areaPlanta(a.pts), fonte: 'em planta' };
+}
+// Clique dentro de alguma área (coordenadas de mundo wx, wy)?
+function areaEm(wx, wy) {
+    if (!showAreas) return null;
+    for (const a of areas) {
+        let dentro = false;
+        const vs = a.pts;
+        for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+            const xi = (flipH ? -vs[i].h : vs[i].h), yi = -vs[i].elev * exagero;
+            const xj = (flipH ? -vs[j].h : vs[j].h), yj = -vs[j].elev * exagero;
+            if (((yi > wy) !== (yj > wy)) && (wx < (xj - xi) * (wy - yi) / (yj - yi) + xi)) dentro = !dentro;
+        }
+        if (dentro) return a;
+    }
+    return null;
+}
+function mostrarInfoArea(a) {
+    const { v, fonte } = areaValor(a);
+    document.getElementById('ponto-info-titulo').textContent = 'Tela selecionada';
+    document.getElementById('ponto-info-corpo').innerHTML =
+        `<b>${escapeHtml(a.nome)}</b><br>` +
+        `Área: <b>${v.toFixed(1)} m²</b> <small>(${fonte})</small><br>` +
+        `Vértices: ${a.pts.length}`;
+    document.getElementById('ponto-info').classList.remove('hidden');
 }
 
 // Divisórias: (h, elev) -> tela (respeita flip e exagero, igual aos pontos).
@@ -303,8 +444,34 @@ function fitView() {
 // =============================================================
 //  Desenho
 // =============================================================
+function corRgba(hex, alpha) { const r = hexRgb(hex); return `rgba(${r[0]},${r[1]},${r[2]},${alpha})`; }
+
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    // Áreas (telas de proteção) — desenhadas atrás de tudo, transparentes
+    if (showAreas && areas.length) {
+        areas.forEach(a => {
+            const tela = a.pts.map(v => topView
+                ? enParaTela(v.e, v.n)
+                : divParaTela(v.h, v.elev));
+            ctx.beginPath();
+            tela.forEach((s, i) => i === 0 ? ctx.moveTo(s.x, s.y) : ctx.lineTo(s.x, s.y));
+            ctx.closePath();
+            ctx.fillStyle = corRgba(a.cor, 0.22); ctx.fill();
+            ctx.strokeStyle = a.cor; ctx.lineWidth = 2; ctx.stroke();
+            // nome + área no centro
+            let cx = 0, cy = 0; tela.forEach(s => { cx += s.x; cy += s.y; }); cx /= tela.length; cy /= tela.length;
+            const { v } = areaValor(a);
+            ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+            ctx.fillStyle = 'rgba(255,255,255,0.85)';
+            const t1 = a.nome, t2 = v.toFixed(1) + ' m²';
+            const w = Math.max(ctx.measureText(t1).width, ctx.measureText(t2).width);
+            ctx.fillRect(cx - w / 2 - 5, cy - 15, w + 10, 30);
+            ctx.fillStyle = '#222'; ctx.fillText(t1, cx, cy - 3); ctx.fillText(t2, cx, cy + 11);
+            ctx.textAlign = 'left';
+        });
+    }
 
     // Polilinhas das linhas (sempre)
     lines.forEach((line, li) => {
@@ -406,6 +573,24 @@ function draw() {
         }
     }
 
+    // Medição de distância (anéis nos pontos + linha com o valor)
+    if (medindo && medA) {
+        const s1 = toScreen(medA);
+        ctx.beginPath(); ctx.arc(s1.x, s1.y, 9, 0, Math.PI * 2); ctx.strokeStyle = '#0a7d4b'; ctx.lineWidth = 3; ctx.stroke();
+        if (medB) {
+            const s2 = toScreen(medB);
+            ctx.beginPath(); ctx.arc(s2.x, s2.y, 9, 0, Math.PI * 2); ctx.stroke();
+            ctx.setLineDash([6, 4]); ctx.beginPath(); ctx.moveTo(s1.x, s1.y); ctx.lineTo(s2.x, s2.y); ctx.lineWidth = 2; ctx.stroke(); ctx.setLineDash([]);
+            const d3 = Math.hypot(Math.hypot(medB.e - medA.e, medB.n - medA.n), medB.elev - medA.elev);
+            const mx2 = (s1.x + s2.x) / 2, my2 = (s1.y + s2.y) / 2, rot = d3.toFixed(2) + ' m';
+            ctx.font = 'bold 12px sans-serif'; ctx.textAlign = 'center';
+            const w = ctx.measureText(rot).width;
+            ctx.fillStyle = '#0a7d4b'; ctx.fillRect(mx2 - w / 2 - 5, my2 - 20, w + 10, 17);
+            ctx.fillStyle = '#fff'; ctx.fillText(rot, mx2, my2 - 8);
+            ctx.textAlign = 'left';
+        }
+    }
+
     // Hover
     if (hoveredPoint && catVisivel(hoveredPoint)) {
         const s = toScreen(hoveredPoint);
@@ -488,10 +673,51 @@ function montarLinhasDetectadas(comNome) {
     currentLineIndex = lines.length ? 0 : -1;
 }
 // Carregamento automático (visualizador): sem confirmações nem avisos.
+let autoDetectou = false;
 function detectarLinhasAuto() {
     const comNome = points.filter(p => !p.deleted && CATS_LINHA.has(p.cat) && chaveLinha(p));
     if (!comNome.length) return;
     montarLinhasDetectadas(comNome);
+    autoDetectou = true;
+    salvarAutosave();
+}
+// Infere divisórias pela numeração original do CSV: quando a sequência de uma
+// linha "reinicia" (ex.: ...A32, A1, A2...), há uma partição do talude ali.
+function inferirDivisorias() {
+    if (dividers.length || !lines.length) return;
+    const cortes = []; // posições (h) dos reinícios detectados
+    lines.forEach(line => {
+        const re = new RegExp('^' + line.letra.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\s*-?\\s*(\\d+)$', 'i');
+        let prevNum = null, prevP = null;
+        line.points.forEach(p => {
+            const m = (p.id || '').trim().match(re);
+            if (!m) return;
+            const num = parseInt(m[1], 10);
+            // salto grande na numeração = fronteira entre seções
+            if (prevNum != null && Math.abs(num - prevNum) >= 5) cortes.push((prevP.h + p.h) / 2);
+            prevNum = num; prevP = p;
+        });
+    });
+    if (!cortes.length) return;
+    cortes.sort((a, b) => a - b);
+    // agrupa cortes próximos (a mesma divisa é vista por várias linhas)
+    const grupos = [];
+    cortes.forEach(h => {
+        const g = grupos[grupos.length - 1];
+        if (g && h - g[g.length - 1] < 8) g.push(h); else grupos.push([h]);
+    });
+    // só vira divisa o grupo com apoio de várias linhas (descarta saltos isolados
+    // de numeração/ordenação que não são partição do talude)
+    const apoioMin = Math.max(2, Math.ceil(cortes.length / 4));
+    const validos = grupos.filter(g => g.length >= apoioMin);
+    if (!validos.length) return;
+    let minElev = Infinity, maxElev = -Infinity;
+    points.forEach(p => { if (!p.deleted) { if (p.elev < minElev) minElev = p.elev; if (p.elev > maxElev) maxElev = p.elev; } });
+    validos.forEach((g, i) => {
+        const h = g.reduce((s, v) => s + v, 0) / g.length;
+        dividers.push({ name: 'Divisa ' + (i + 1), pts: [{ h, elev: maxElev + 2 }, { h, elev: minElev - 2 }] });
+    });
+    lines.forEach(renumerar);
     salvarAutosave();
 }
 // Agrupa os grampos em linhas a partir dos nomes do CSV original (botão).
@@ -510,6 +736,7 @@ function detectarLinhas() {
 
     pushUndo();
     montarLinhasDetectadas(comNome);
+    inferirDivisorias(); // não sobrescreve divisórias já existentes
     montarFiltroCategorias(); sugerirProximaLetra(); posMudanca();
     alert(`${lines.length} linha(s) detectada(s) a partir do CSV.` + (semNome > 0 ? `\n${semNome} grampo(s) sem nome ficaram de fora.` : ''));
 }
@@ -628,7 +855,32 @@ function fecharMiniCard() { document.getElementById('mini-card').classList.add('
 function confirmarMiniCard() { const v = document.getElementById('mini-card-input').value; const cb = miniCardCb; fecharMiniCard(); if (cb) cb(v); }
 
 // Modo visualização: clique num ponto mostra nome e coordenadas.
+// --- Medição de distância (2D e edição) ---
+function alternarMedir() {
+    medindo = !medindo; medA = null; medB = null;
+    document.getElementById('btn-medir').classList.toggle('ativo', medindo);
+    if (medindo && modoExcluir) alternarModoExcluir();
+    atualizarStatus(); draw();
+}
+function registrarMedicao(p) {
+    if (!medA || medB) { medA = p; medB = null; fecharInfoPonto(); }
+    else if (p !== medA) { medB = p; mostrarInfoMedicao(); }
+    draw();
+}
+function mostrarInfoMedicao() {
+    const dE = medB.e - medA.e, dN = medB.n - medA.n, dZ = medB.elev - medA.elev;
+    const dH = Math.hypot(dE, dN), d3 = Math.hypot(dH, dZ);
+    document.getElementById('ponto-info-titulo').textContent = 'Distância';
+    document.getElementById('ponto-info-corpo').innerHTML =
+        `<b>${escapeHtml(medA.name || medA.id)}</b> → <b>${escapeHtml(medB.name || medB.id)}</b><br>` +
+        `Distância 3D: <b>${d3.toFixed(2)} m</b><br>` +
+        `Horizontal: ${dH.toFixed(2)} m<br>` +
+        `Desnível: ${dZ >= 0 ? '+' : ''}${dZ.toFixed(2)} m`;
+    document.getElementById('ponto-info').classList.remove('hidden');
+}
+
 function mostrarInfoPonto(p) {
+    document.getElementById('ponto-info-titulo').textContent = 'Ponto selecionado';
     const corpo = document.getElementById('ponto-info-corpo');
     let html = `<b>${escapeHtml(p.name || p.id)}</b><br>`;
     if (p.name && p.name !== p.id) html += `<small>Nome original: ${escapeHtml(p.id)}</small><br>`;
@@ -793,6 +1045,23 @@ function montarFiltroCategorias() {
             cont.appendChild(item);
         }
     });
+    // Telas de proteção (áreas) — item único de liga/desliga
+    if (areas.length) {
+        if (modoEdicao) {
+            const div = document.createElement('label'); div.className = 'check cat-check';
+            div.innerHTML = `<input type="checkbox" ${showAreas ? 'checked' : ''}>
+                <span class="cat-bola" style="background:${areas[0].cor}"></span> Telas de proteção (${areas.length})`;
+            div.querySelector('input').addEventListener('change', (e) => { showAreas = e.target.checked; draw(); });
+            cont.appendChild(div);
+        } else {
+            const item = document.createElement('div');
+            item.className = 'legenda-item' + (showAreas ? '' : ' off');
+            item.title = 'Clique para mostrar/ocultar';
+            item.innerHTML = `<span class="cat-bola" style="background:${areas[0].cor}"></span><span class="leg-rotulo">Telas de proteção</span><b>${areas.length}</b>`;
+            item.addEventListener('click', () => { showAreas = !showAreas; montarFiltroCategorias(); draw(); });
+            cont.appendChild(item);
+        }
+    }
 }
 function atualizarPainelLinhas() {
     const cont = document.getElementById('lista-linhas');
@@ -850,7 +1119,8 @@ function excluirLinha(li) {
 function atualizarStatus() {
     const atribuidos = points.filter(p => p.lineIndex != null).length;
     let html = `Pontos ativos: <b>${ativos().length}</b><br>Atribuídos a linhas: <b>${atribuidos}</b><br>Linhas: <b>${lines.length}</b> &middot; Divisórias: <b>${dividers.length}</b>`;
-    if (modoExcluir) html = `<b style="color:#c0392b">Excluir pontos:</b> clique, caixa ou contorno excluem. (Esc sai)<br>` + html;
+    if (medindo) html = `<b style="color:#0a7d4b">Medir:</b> clique no 1º ponto e depois no 2º. (Esc sai)<br>` + html;
+    else if (modoExcluir) html = `<b style="color:#c0392b">Excluir pontos:</b> clique, caixa ou contorno excluem. (Esc sai)<br>` + html;
     else if (addingDivider) html = `<b style="color:#c0392b">Divisória:</b> clique para adicionar vértices; <b>duplo-clique</b> ou <b>Enter</b> conclui. (Esc cancela)<br>` + html;
     else if (addingGuide) html = `<b style="color:#0a7d4b">Eixo-guia:</b> clique seguindo a curva do talude (de uma ponta à outra); <b>duplo-clique</b> ou <b>Enter</b> conclui. (Esc cancela)<br>` + html;
     else if (topView) html = `<b style="color:#0a7d4b">Vista de topo</b> — desenhe o eixo-guia ou volte à vista frontal.<br>` + html;
@@ -880,7 +1150,7 @@ function baixar(blob, nome) {
 // =============================================================
 const PAGE_MM = { A0: [841, 1189], A1: [594, 841], A3: [297, 420], A4: [210, 297] };
 const pdfState = { desenhoImg: null, desenhoAspect: 1, bgImg: null, k: 1, fitK: 1, zoom: 1, layout: null, drag: null, sel: null, fs: { info: 1, counts: 1, legend: 1 } };
-const PDF_KEY = STORAGE_KEY + ':pdf';
+let PDF_KEY = STORAGE_KEY + ':pdf';
 
 // Layout/campos do montador salvos por talude.
 function salvarLayoutPdf() {
@@ -1224,6 +1494,7 @@ function cancelarSelecao() {
     if (addingDivider) { addingDivider = false; document.getElementById('btn-divisoria').classList.remove('ativo'); }
     if (addingGuide) { addingGuide = false; document.getElementById('btn-guia').classList.remove('ativo'); }
     if (modoExcluir) { modoExcluir = false; document.getElementById('btn-excluir-pontos').classList.remove('ativo'); }
+    if (medindo) { medindo = false; medA = null; medB = null; document.getElementById('btn-medir').classList.remove('ativo'); }
     diviPts = []; guiaPts = []; diviMouse = null; atualizarStatus();
 }
 
@@ -1231,8 +1502,8 @@ canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
     if (e.button === 1 || spaceDown || e.ctrlKey) { pointer.down = true; pointer.panning = true; pointer.lastX = mx; pointer.lastY = my; e.preventDefault(); return; }
     if (e.button !== 0) return;
-    // Modo visualização: arrastar = mover a tela; clique num ponto = informações.
-    if (!modoEdicao) {
+    // Modo visualização (ou medição): arrastar = mover a tela; clique num ponto = informações/medida.
+    if (!modoEdicao || medindo) {
         pointer.down = true; pointer.panning = true;
         pointer.startX = mx; pointer.startY = my; pointer.lastX = mx; pointer.lastY = my;
         pointer.downPoint = pontoEm(mx, my);
@@ -1281,10 +1552,14 @@ window.addEventListener('mouseup', (e) => {
     pointer.down = false;
     if (pointer.panning) {
         pointer.panning = false;
-        // Visualizador: clique parado sobre um ponto abre as informações.
-        if (!modoEdicao && pointer.downPoint) {
+        // Visualizador/medição: clique parado sobre um ponto (ou área) abre informações/medida.
+        if (!modoEdicao || medindo) {
             const rect = canvas.getBoundingClientRect(); const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-            if (Math.abs(mx - pointer.startX) + Math.abs(my - pointer.startY) < 5) mostrarInfoPonto(pointer.downPoint);
+            if (Math.abs(mx - pointer.startX) + Math.abs(my - pointer.startY) < 5) {
+                if (medindo) { if (pointer.downPoint) registrarMedicao(pointer.downPoint); }
+                else if (pointer.downPoint) mostrarInfoPonto(pointer.downPoint);
+                else if (!topView) { const w = telaParaMundo(mx, my); const a = areaEm(w.wx, w.wy); if (a) mostrarInfoArea(a); }
+            }
         }
         pointer.downPoint = null;
         return;
@@ -1398,6 +1673,25 @@ document.getElementById('btn-desfazer').addEventListener('click', desfazer);
 document.getElementById('btn-detectar').addEventListener('click', detectarLinhas);
 document.getElementById('btn-divisoria').addEventListener('click', alternarModoDivisoria);
 document.getElementById('btn-excluir-pontos').addEventListener('click', alternarModoExcluir);
+document.getElementById('btn-medir').addEventListener('click', alternarMedir);
+document.getElementById('btn-abrir-csv').addEventListener('click', () => document.getElementById('csv-local').click());
+document.getElementById('csv-local').addEventListener('change', (e) => {
+    if (e.target.files[0]) carregarCsvLocal(e.target.files[0]);
+    e.target.value = ''; // permite reabrir o mesmo arquivo
+});
+
+// Link cruzado 2D -> 3D (quando o glb é conhecido via URL)
+(function () {
+    const glb = params.get('glb');
+    if (!glb) return;
+    const p3 = new URLSearchParams({ v: '2', glb, csv: csvFileURL });
+    if (params.get('data')) p3.set('data', params.get('data'));
+    if (areasFileURL) p3.set('areas', areasFileURL);
+    p3.set('nome', nomeTalude);
+    const a = document.getElementById('link-3d');
+    a.href = 'visualizador.html?' + p3.toString();
+    a.style.display = '';
+})();
 
 // Toolbar de ícones: cada ícone abre/fecha o seu card (um por vez)
 document.querySelectorAll('#toolbar .tool-btn[data-card]').forEach(btn => {

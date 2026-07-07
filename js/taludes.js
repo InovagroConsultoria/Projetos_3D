@@ -7,9 +7,13 @@ initInfoModal();
 const lista = document.getElementById("lista-projetos");
 
 for (const talude of TALUDES) {
-    const paramsVis = new URLSearchParams({ v: "2", glb: talude.glb, csv: talude.csv });
+    const paramsVis = new URLSearchParams({ v: "2", glb: talude.glb, csv: talude.csv, nome: talude.nome });
     if (talude.data) paramsVis.set("data", talude.data);
-    const paramsEd = new URLSearchParams({ csv: talude.csv, nome: talude.nome });
+    if (talude.areas) paramsVis.set("areas", talude.areas);
+    // O link 2D leva também o glb/data para permitir o botão "Ver em 3D" lá dentro.
+    const paramsEd = new URLSearchParams({ csv: talude.csv, nome: talude.nome, glb: talude.glb });
+    if (talude.data) paramsEd.set("data", talude.data);
+    if (talude.areas) paramsEd.set("areas", talude.areas);
 
     const li = document.createElement("li");
     li.className = "projeto";

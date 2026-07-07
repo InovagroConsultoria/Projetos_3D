@@ -21,6 +21,7 @@ const labelVisibilityThreshold = 90; // distância a partir da qual os rótulos 
 const params = new URLSearchParams(window.location.search);
 const glbFileURL = params.get('glb');
 const csvFileURL = params.get('csv');
+const areasFileURL = params.get('areas'); // telas de proteção (opcional)
 const dataLevantamento = params.get('data'); // ex.: "13/06/2026" (opcional)
 
 if (!glbFileURL || !csvFileURL) {
@@ -276,7 +277,17 @@ function init() {
         }
     });
     document.getElementById('frameButton').addEventListener('click', frameModel);
+    document.getElementById('measureButton').addEventListener('click', toggleMedicao);
     renderer.domElement.addEventListener('click', onPointClick);
+
+    // Link cruzado 3D -> 2D (mantém glb/data para a volta)
+    if (csvFileURL) {
+        const p2 = new URLSearchParams({ csv: csvFileURL, nome: params.get('nome') || 'Talude' });
+        if (glbFileURL) p2.set('glb', glbFileURL);
+        if (dataLevantamento) p2.set('data', dataLevantamento);
+        if (areasFileURL) p2.set('areas', areasFileURL);
+        document.getElementById('link-2d').href = 'editor-linhas.html?' + p2.toString();
+    }
 
     // Clique nos itens da legenda liga/desliga cada categoria.
     document.querySelectorAll('#legenda-painel .legenda-item[data-categoria]').forEach(item => {
@@ -351,6 +362,9 @@ function onPointClick(event) {
     // Ignora pontos ocultos pelo filtro (continuam clicáveis no raycaster).
     const hit = intersects.find(i => i.object.visible);
 
+    // Modo medição: cliques escolhem os dois pontos da medida.
+    if (medindo3d) { if (hit) registrarMed3d(hit.object); return; }
+
     if (hit) {
         if (highlightedPoint) {
             highlightedPoint.material = highlightedPoint.userData.originalMaterial;
@@ -360,9 +374,14 @@ function onPointClick(event) {
         showPointInfo(highlightedPoint);
         // Clicar manualmente encerra o ciclo da busca atual.
         lastSearchQuery = '';
-    } else {
-        deselectPoint();
+        return;
     }
+    // Sem ponto: verifica clique numa tela de proteção (área drapeada).
+    if (areasGroup && areasGroup.visible) {
+        const hitsArea = raycaster.intersectObjects(areasGroup.children.filter(o => o.isMesh));
+        if (hitsArea.length) { deselectPoint(); mostrarInfoArea3d(hitsArea[0].object); return; }
+    }
+    deselectPoint();
 }
 
 // =============================================================
@@ -481,6 +500,7 @@ function loadSurface(url) {
 
             controls.update();
             hideLoadingScreen();
+            tryLoadAreas();
         },
         (xhr) => {
             if (xhr.lengthComputable) {
@@ -494,6 +514,245 @@ function loadSurface(url) {
             showError("Não foi possível carregar o modelo 3D (GLB).", url);
         }
     );
+}
+
+// =============================================================
+//  Medição de distância entre pontos conhecidos
+// =============================================================
+let medindo3d = false;
+let med3dA = null, med3dB = null;
+let medLine = null, medLabel = null;
+const measureMaterial = new THREE.MeshBasicMaterial({ color: 0x00c8ff }); // ciano (pontos da medição)
+
+function limparMedicao() {
+    if (medLine) { scene.remove(medLine); medLine.geometry.dispose(); medLine = null; }
+    if (medLabel) { scene.remove(medLabel); medLabel = null; }
+    [med3dA, med3dB].forEach(m => { if (m && m !== highlightedPoint) m.material = m.userData.originalMaterial; });
+    med3dA = null; med3dB = null;
+}
+function toggleMedicao() {
+    medindo3d = !medindo3d;
+    document.getElementById('measureButton').classList.toggle('primario', medindo3d);
+    limparMedicao();
+    if (medindo3d) {
+        document.getElementById('info-box').innerHTML = '<small>Clique no 1º ponto e depois no 2º para medir.</small>';
+        document.getElementById('info-box-container').style.display = 'block';
+    } else deselectPoint();
+}
+function registrarMed3d(mesh) {
+    if (!med3dA || med3dB) { limparMedicao(); med3dA = mesh; mesh.material = measureMaterial; return; }
+    if (mesh === med3dA) return;
+    med3dB = mesh; mesh.material = measureMaterial;
+    const a = med3dA.userData.originalCoords, b = med3dB.userData.originalCoords;
+    const dE = b.e - a.e, dN = b.n - a.n, dZ = b.elev - a.elev;
+    const dH = Math.hypot(dE, dN), d3 = Math.hypot(dH, dZ);
+    // linha entre os pontos + rótulo com a distância no meio
+    medLine = new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([med3dA.position.clone(), med3dB.position.clone()]),
+        new THREE.LineBasicMaterial({ color: 0x00c8ff }));
+    scene.add(medLine);
+    const div = document.createElement('div');
+    div.className = 'label';
+    div.textContent = d3.toFixed(2) + ' m';
+    medLabel = new CSS2DObject(div);
+    medLabel.position.copy(med3dA.position).add(med3dB.position).multiplyScalar(0.5);
+    scene.add(medLabel);
+    document.getElementById('info-box').innerHTML = `
+        <strong>${med3dA.userData.pointID}</strong> → <strong>${med3dB.userData.pointID}</strong><br>
+        <strong>Distância 3D:</strong> ${d3.toFixed(2)} m<br>
+        <strong>Horizontal:</strong> ${dH.toFixed(2)} m<br>
+        <strong>Desnível:</strong> ${dZ >= 0 ? '+' : ''}${dZ.toFixed(2)} m
+    `;
+    document.getElementById('info-box-container').style.display = 'block';
+}
+
+// =============================================================
+//  Áreas (telas de proteção) — polígonos drapeados na superfície
+// =============================================================
+let areasGroup = null;      // grupo com as mantas na cena
+let areasCarregadas = false;
+let showAreas3d = true;
+
+function tryLoadAreas() {
+    if (!areasFileURL || areasCarregadas || !currentSurface || !currentPointsGroup) return;
+    areasCarregadas = true;
+    fetch(areasFileURL, { cache: 'no-store' })
+        .then(r => { if (!r.ok) throw new Error(r.statusText); return r.text(); })
+        .then(txt => construirAreas(parseAreasTxt(txt)))
+        .catch(err => console.warn('Áreas não carregadas:', err));
+}
+
+// Mesmo formato do 2D: [NOME; cor=#rrggbb; area=123.4] + linhas "E; N; Elev".
+function parseAreasTxt(txt) {
+    const out = [];
+    let atual = null;
+    const CORES = ['#00c8ff', '#ff8c00', '#e6194B', '#3cb44b', '#911eb4', '#f032e6'];
+    txt.split(/\r?\n/).forEach(linha => {
+        const l = linha.trim();
+        if (!l || l.startsWith('#')) return;
+        const cab = l.match(/^\[([^\]]+)\]/); // tolera comentários após o "]"
+        if (cab) {
+            const partes = cab[1].split(';').map(s => s.trim());
+            let cor = null, areaFile = null;
+            partes.slice(1).forEach(p => {
+                const m = p.match(/^(cor|area)\s*=\s*(.*)$/i);
+                if (!m) return;
+                if (m[1].toLowerCase() === 'cor' && m[2]) cor = m[2].trim();
+                if (m[1].toLowerCase() === 'area') { const v = parseFloat(m[2].replace(',', '.')); if (!Number.isNaN(v)) areaFile = v; }
+            });
+            atual = { nome: partes[0] || ('Área ' + (out.length + 1)), cor: cor || CORES[out.length % CORES.length], areaFile, pts: [] };
+            out.push(atual);
+            return;
+        }
+        if (!atual) return;
+        const c = l.split(/[;,\t]/).map(s => parseFloat(s.trim().replace(',', '.')));
+        if (c.length >= 3 && c.every(v => !Number.isNaN(v))) atual.pts.push({ e: c[0], n: c[1], elev: c[2] });
+    });
+    return out.filter(a => a.pts.length >= 3);
+}
+
+// Cota da superfície em (x, y) da cena, via raio vertical; null se não acertar.
+const areaRaycaster = new THREE.Raycaster();
+function cotaSuperficie(x, y, zTopo) {
+    areaRaycaster.set(new THREE.Vector3(x, y, zTopo), new THREE.Vector3(0, 0, -1));
+    const hits = areaRaycaster.intersectObject(currentSurface, true);
+    return hits.length ? hits[0].point.z : null;
+}
+function dentroPoligonoXY(x, y, vs) {
+    let dentro = false;
+    for (let i = 0, j = vs.length - 1; i < vs.length; j = i++) {
+        if (((vs[i].y > y) !== (vs[j].y > y)) && (x < (vs[j].x - vs[i].x) * (y - vs[i].y) / (vs[j].y - vs[i].y) + vs[i].x)) dentro = !dentro;
+    }
+    return dentro;
+}
+
+function construirAreas(lista) {
+    if (!lista.length) return;
+    const oE = parseFloat(document.getElementById('originE').value) || 0;
+    const oElev = parseFloat(document.getElementById('originElev').value) || 0;
+    const oN = parseFloat(document.getElementById('originN').value) || 0;
+    const OFFSET = 0.15; // afastamento da manta acima da superfície (m)
+
+    areasGroup = new THREE.Group();
+    scene.add(areasGroup);
+
+    const boxS = new THREE.Box3().setFromObject(currentSurface);
+    const zTopo = boxS.max.z + 50;
+
+    lista.forEach(a => {
+        // vértices em coords da cena (x=E, y=N)
+        const vs = a.pts.map(p => ({ x: p.e - oE, y: p.n - oN, z: p.elev - oElev }));
+        let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+        vs.forEach(v => { minX = Math.min(minX, v.x); maxX = Math.max(maxX, v.x); minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y); });
+
+        // passo da grade: ~2000 amostras no máximo
+        const passo = Math.max(0.4, Math.sqrt(((maxX - minX) * (maxY - minY)) / 2000));
+        // fallback quando o raio não acerta a malha: média ponderada das cotas dos vértices
+        const zFallback = (x, y) => {
+            let sw = 0, sz = 0;
+            vs.forEach(v => { const d = Math.hypot(x - v.x, y - v.y) + 1e-6; sw += 1 / d; sz += v.z / d; });
+            return sz / sw;
+        };
+        const zEm = (x, y) => { const z = cotaSuperficie(x, y, zTopo); return (z == null ? zFallback(x, y) : z) + OFFSET; };
+
+        // malha por células da grade: 2 triângulos por célula com centro dentro do polígono
+        const posicoes = [];
+        let area3d = 0;
+        const nx = Math.ceil((maxX - minX) / passo), ny = Math.ceil((maxY - minY) / passo);
+        const cotas = [];
+        for (let i = 0; i <= nx; i++) { cotas[i] = []; for (let j = 0; j <= ny; j++) cotas[i][j] = null; }
+        const cotaNo = (i, j) => { if (cotas[i][j] == null) cotas[i][j] = zEm(minX + i * passo, minY + j * passo); return cotas[i][j]; };
+        const triangulo = (p1, p2, p3) => {
+            posicoes.push(p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], p3[0], p3[1], p3[2]);
+            const ux = p2[0] - p1[0], uy = p2[1] - p1[1], uz = p2[2] - p1[2];
+            const vx = p3[0] - p1[0], vy = p3[1] - p1[1], vz = p3[2] - p1[2];
+            const cx = uy * vz - uz * vy, cy = uz * vx - ux * vz, cz = ux * vy - uy * vx;
+            area3d += 0.5 * Math.sqrt(cx * cx + cy * cy + cz * cz);
+        };
+        for (let i = 0; i < nx; i++) {
+            for (let j = 0; j < ny; j++) {
+                const x0 = minX + i * passo, y0 = minY + j * passo, x1 = x0 + passo, y1 = y0 + passo;
+                // dois triângulos; mantém os que têm o centróide dentro do polígono
+                const t1 = [[x0, y0], [x1, y0], [x1, y1]], t2 = [[x0, y0], [x1, y1], [x0, y1]];
+                [[t1, [i, j], [i + 1, j], [i + 1, j + 1]], [t2, [i, j], [i + 1, j + 1], [i, j + 1]]].forEach(([t, a1, b1, c1]) => {
+                    const cxm = (t[0][0] + t[1][0] + t[2][0]) / 3, cym = (t[0][1] + t[1][1] + t[2][1]) / 3;
+                    if (!dentroPoligonoXY(cxm, cym, vs)) return;
+                    triangulo(
+                        [t[0][0], t[0][1], cotaNo(a1[0], a1[1])],
+                        [t[1][0], t[1][1], cotaNo(b1[0], b1[1])],
+                        [t[2][0], t[2][1], cotaNo(c1[0], c1[1])]);
+                });
+            }
+        }
+        if (!posicoes.length) return;
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.Float32BufferAttribute(posicoes, 3));
+        geo.computeVertexNormals();
+        const mat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(a.cor), transparent: true, opacity: 0.35,
+            side: THREE.DoubleSide, depthWrite: false, polygonOffset: true, polygonOffsetFactor: -2,
+        });
+        // área em planta (projeção E×N) — mesma convenção do levantamento
+        let nz = 0;
+        for (let i = 0; i < a.pts.length; i++) {
+            const p1 = a.pts[i], p2 = a.pts[(i + 1) % a.pts.length];
+            nz += (p1.e - p2.e) * (p1.n + p2.n);
+        }
+        const areaPlanta = Math.abs(nz) / 2;
+
+        const mesh = new THREE.Mesh(geo, mat);
+        mesh.userData = { isArea: true, nome: a.nome, areaFile: a.areaFile, areaPlanta, area3d, cor: a.cor };
+        areasGroup.add(mesh);
+
+        // contorno drapeado (borda nítida)
+        const bordas = [];
+        vs.forEach((v, i2) => {
+            const w = vs[(i2 + 1) % vs.length];
+            const passos = Math.max(2, Math.ceil(Math.hypot(w.x - v.x, w.y - v.y) / passo));
+            for (let k = 0; k <= passos; k++) {
+                const x = v.x + (w.x - v.x) * k / passos, y = v.y + (w.y - v.y) * k / passos;
+                bordas.push(new THREE.Vector3(x, y, zEm(x, y) + 0.05));
+            }
+        });
+        const linha = new THREE.Line(
+            new THREE.BufferGeometry().setFromPoints(bordas),
+            new THREE.LineBasicMaterial({ color: new THREE.Color(a.cor) }));
+        areasGroup.add(linha);
+    });
+
+    montarLegendaAreas(lista.length);
+    console.log(`Áreas carregadas: ${lista.length}`);
+}
+
+function montarLegendaAreas(qtd) {
+    const painel = document.getElementById('legenda-painel');
+    if (!painel || document.getElementById('legenda-areas')) return;
+    const total = painel.querySelector('.legenda-total');
+    const item = document.createElement('div');
+    item.className = 'legenda-item';
+    item.id = 'legenda-areas';
+    item.title = 'Clique para mostrar/ocultar';
+    item.innerHTML = `<span class="bola" style="background-color:#00c8ff;"></span><span>Telas de proteção: <strong>${qtd}</strong></span>`;
+    item.addEventListener('click', () => {
+        showAreas3d = !showAreas3d;
+        if (areasGroup) areasGroup.visible = showAreas3d;
+        item.classList.toggle('categoria-off', !showAreas3d);
+    });
+    painel.insertBefore(item, total);
+}
+
+function mostrarInfoArea3d(mesh) {
+    const d = mesh.userData;
+    const valor = d.areaFile != null ? d.areaFile : d.areaPlanta;
+    const fonte = d.areaFile != null ? 'arquivo' : 'em planta';
+    document.getElementById('info-box').innerHTML = `
+        <strong>Tela:</strong> ${d.nome}<br>
+        <strong>Área:</strong> ${valor.toFixed(1)} m² <small>(${fonte})</small><br>
+        <strong>Em planta:</strong> ${d.areaPlanta.toFixed(1)} m²<br>
+        <strong>Inclinada (superfície):</strong> ${d.area3d.toFixed(1)} m²
+    `;
+    document.getElementById('info-box-container').style.display = 'block';
 }
 
 // Extrai as coordenadas de uma linha conforme o formato detectado:
@@ -717,6 +976,7 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
     updateLabelVisibility();
 
     console.log(`Carregados ${totalPlotados} pontos.`);
+    tryLoadAreas();
 }
 
 // =============================================================
