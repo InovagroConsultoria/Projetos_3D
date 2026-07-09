@@ -5,6 +5,8 @@
 //  eixo vertical = elevação.
 // =============================================================
 
+import { TALUDES, OBRAS } from './config.js';
+
 const params = new URLSearchParams(window.location.search);
 const csvFileURL = params.get('csv');
 const areasFileURL = params.get('areas');
@@ -210,6 +212,45 @@ function extrairCoords(parts) {
     return { e: parseFloat(parts[1]), elev: parseFloat(parts[2]), n: parseFloat(parts[3]) };
 }
 
+// =============================================================
+//  Vista predefinida (config) — abre no jeito certo na 1ª visita
+// =============================================================
+// Procura no config.js a "vista" definida para o CSV atual.
+function presetVistaDoConfig() {
+    if (!csvFileURL) return null;
+    const t = TALUDES.find(x => x.csv === csvFileURL);
+    if (t && t.vista) return t.vista;
+    for (const o of OBRAS) for (const a of (o.acoes || [])) {
+        if (a.editor && a.editor.csv === csvFileURL && a.editor.vista) return a.editor.vista;
+        if (a.viz && a.viz.csv === csvFileURL && a.viz.vista) return a.viz.vista;
+    }
+    return null;
+}
+function aplicarPresetVista(v) {
+    if (!v) return;
+    if (v.flipH) { flipH = true; const chk = document.getElementById('chk-flip'); if (chk) chk.checked = true; }
+    if (typeof v.nameAngle === 'number') {
+        nameAngle = v.nameAngle;
+        const sl = document.getElementById('slider-angulo'); if (sl) sl.value = nameAngle;
+        const el2 = document.getElementById('valor-angulo'); if (el2) el2.textContent = nameAngle + '°';
+    }
+    if (Array.isArray(v.guide) && v.guide.length >= 2) guide = v.guide.map(g => ({ e: g.e, n: g.n }));
+}
+// Gera o trecho pronto para colar no config.js (espelho + ângulo + eixo-guia).
+function exportarVista() {
+    const campos = [`flipH: ${!!flipH}`];
+    if (nameAngle) campos.push(`nameAngle: ${nameAngle}`);
+    if (guide.length >= 2) {
+        const g = guide.map(v => `{ e: ${(+v.e).toFixed(3)}, n: ${(+v.n).toFixed(3)} }`).join(', ');
+        campos.push(`guide: [${g}]`);
+    }
+    const snippet = `vista: { ${campos.join(', ')} },`;
+    const base = (nomeTalude || 'talude').replace(/[^\w-]+/g, '_');
+    baixar(new Blob([snippet], { type: 'text/plain;charset=utf-8' }), 'vista_' + base + '.txt');
+    if (navigator.clipboard) navigator.clipboard.writeText(snippet).catch(() => {});
+    alert('Vista exportada!\n\nO trecho foi copiado e baixado (vista_' + base + '.txt).\nEnvie ao administrador para colar no config.js:\n\n' + snippet);
+}
+
 function iniciar(csvText) {
     const linhasTxt = csvText.split(/\r?\n/).map(l => l.replace(/\s+$/, '')).filter(l => l.trim() !== '');
     if (linhasTxt.length === 0) { showError('CSV vazio ou inválido.'); return; }
@@ -245,7 +286,8 @@ function iniciar(csvText) {
 
     montarFiltroCategorias();
     atualizarAvisoSemNome();
-    restaurarAutosave();
+    const tinhaSalvo = restaurarAutosave();
+    if (!tinhaSalvo) aplicarPresetVista(presetVistaDoConfig()); // 1ª visita: vista correta do config
     if (lines.length === 0) detectarLinhasAuto(); // visualizador: linhas pré-definidas carregadas automaticamente
     aplicarGuia(); // se houver eixo-guia salvo, reprojeta por estaqueamento
     if (autoDetectou) inferirDivisorias(); // divisórias visíveis já no 1º carregamento (numeração do CSV)
@@ -1451,8 +1493,8 @@ function salvarAutosave() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, nameAngle, nameSize, dividers, guide, del: points.filter(p => p.deleted).map(p => p.rowIndex), lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
 }
 function restaurarAutosave() {
-    let dados; try { dados = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return; }
-    if (!dados || !dados.lines) return;
+    let dados; try { dados = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return false; }
+    if (!dados || !dados.lines) return false;
     if (dados.flipH) { flipH = true; const chk = document.getElementById('chk-flip'); if (chk) chk.checked = true; }
     if (typeof dados.nameAngle === 'number') {
         nameAngle = dados.nameAngle;
@@ -1473,6 +1515,7 @@ function restaurarAutosave() {
         const line = { letra: l.letra, color: l.color || PALETTE[li % PALETTE.length], inverted: !!l.inverted, points: pts }; renumerar(line); return line;
     });
     if (lines.length > 0) currentLineIndex = lines.length - 1;
+    return true;
 }
 function limparTudo() {
     if (!confirm('Excluir todas as linhas e divisórias?')) return;
@@ -1727,6 +1770,7 @@ document.getElementById('btn-nova-linha').addEventListener('click', novaLinha);
 document.getElementById('input-letra').addEventListener('keydown', (e) => { if (e.key === 'Enter') novaLinha(); });
 document.getElementById('btn-enquadrar').addEventListener('click', () => { fitView(); draw(); });
 document.getElementById('btn-exportar').addEventListener('click', exportar);
+document.getElementById('btn-vista').addEventListener('click', exportarVista);
 document.getElementById('btn-pdf').addEventListener('click', abrirPdfModal);
 document.getElementById('btn-limpar').addEventListener('click', limparTudo);
 
