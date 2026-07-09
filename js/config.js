@@ -9,6 +9,11 @@
 //   csv  -> caminho do arquivo de pontos (.csv)
 //   data -> data do levantamento (texto livre, ex.: "13/06/2026")
 //           usada no rodapé do visualizador. Deixe "" se não houver.
+//   areas -> (opcional) caminho do .txt de telas de proteção.
+//   vista -> (opcional) vista 2D correta que aparece na PRIMEIRA vez que
+//            alguém abre o talude. Gere pelo botão "Exportar vista" no
+//            editor 2D e cole aqui. Ex.:
+//            vista: { flipH: true, nameAngle: 45, guide: [{ e: 231550.3, n: 6715837.5 }, ...] }
 //
 // OBS.: as datas abaixo foram inferidas pelo nome dos arquivos.
 //       Verifique/ajuste cada uma conforme o levantamento real.
