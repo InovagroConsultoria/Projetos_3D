@@ -43,7 +43,7 @@ export const OBRAS = [
         cardLink: null,
         acoes: [
             { label: "Visualizar 3D", viz: { glb: "Superficie/Perau/Perau_2506.glb", csv: "Superficie/Perau/Todos_grampos_perau.csv", data: "25/06/2026" } },
-            { label: "Visualização 2D", editor: { csv: "Superficie/Perau/Todos_grampos_perau.csv", nome: "Obra do Perau", glb: "Superficie/Perau/Perau_2506.glb", data: "25/06/2026" } },
+            { label: "Visualização 2D", editor: { csv: "Superficie/Perau/Todos_grampos_perau.csv", nome: "Obra do Perau", glb: "Superficie/Perau/Perau_2506.glb", data: "25/06/2026", vista: { flipH: true, guide: [{ e: 230427.605, n: 6716413.332 }, { e: 230485.879, n: 6716469.370 }] } } },
         ],
     },
 ];
@@ -54,12 +54,14 @@ export const TALUDES = [
         glb:  "Superficie/t5/t5_1203.glb",
         csv:  "Superficie/t5/Pontos_t5.csv",
         data: "12/03/2026",
+        vista: { flipH: true },
     },
     {
         nome: "Talude T-6",
         glb:  "Superficie/t6t7/t6_superficie.glb",
         csv:  "Superficie/t6t7/Pontos_t6.csv",
         data: "",
+        vista: { flipH: true },
     },
     {
         nome: "Talude T-7",
@@ -72,23 +74,27 @@ export const TALUDES = [
         glb:  "Superficie/t8/t8_0604.glb",
         csv:  "Superficie/t8/Total_t8.csv",
         data: "06/04/2026",
+        vista: { flipH: true, guide: [{ e: 231559.332, n: 6716069.862 }, { e: 231541.913, n: 6716079.816 }, { e: 231532.581, n: 6716092.880 }, { e: 231525.738, n: 6716123.363 }, { e: 231528.849, n: 6716152.602 }, { e: 231538.180, n: 6716173.754 }, { e: 231567.419, n: 6716199.882 }, { e: 231614.077, n: 6716237.831 }, { e: 231643.939, n: 6716261.471 }] },
     },
     {
         nome: "Talude T-10",
         glb:  "Superficie/t_10/superficie_t10.glb",
         csv:  "Superficie/t_10/Pontos_t10_visu.csv",
         data: "",
+        vista: { flipH: true },
     },
     {
         nome: "Talude T-16",
         glb:  "Superficie/t_16/T16_1306.glb",
         csv:  "Superficie/t_16/Todos_Pontos_t16.csv",
         data: "13/06/2026",
+        vista: { flipH: false },
     },
     {
         nome: "Talude T-18",
         glb:  "Superficie/t-18/t18_03_2026.glb",
         csv:  "Superficie/t-18/Todos_pontos_t18_VZ.csv",
         data: "03/2026",
+        vista: { flipH: false },
     },
 ];
