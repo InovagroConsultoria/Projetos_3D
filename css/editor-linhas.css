@@ -436,6 +436,33 @@ body:not(.modo-visualizacao) .so-visu { display: none !important; }
 body.modo-visualizacao .linha-acoes { display: none !important; }
 body.modo-visualizacao .linha-cor { pointer-events: none; }
 
+/* Legenda fixa no canto (modo visualização) */
+#legenda-fixa {
+    position: absolute;
+    bottom: 98px; /* acima do chip de resumo (canto inferior esquerdo) */
+    left: 15px;
+    z-index: 10;
+    background: rgba(255, 255, 255, 0.94);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid var(--borda);
+    border-radius: 12px;
+    padding: 10px 12px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+    min-width: 178px;
+    max-height: calc(100vh - 150px);
+    overflow-y: auto;
+}
+#legenda-fixa.hidden { display: none; }
+#legenda-fixa .legenda-titulo {
+    font-size: 12px;
+    font-weight: 700;
+    color: #333;
+    margin-bottom: 6px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #eef2ef;
+}
+
 /* Legenda (modo visualização) */
 .legenda-item {
     display: flex;
