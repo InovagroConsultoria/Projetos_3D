@@ -264,6 +264,8 @@ button.perigo { background-color: #fff; border-color: #e5b5af; color: var(--verm
 button.perigo:hover { background-color: var(--vermelho); border-color: var(--vermelho); color: #fff; }
 button.largo { width: 100%; text-align: left; margin-bottom: 6px; }
 button.largo.ativo { background-color: var(--verde); border-color: var(--verde); color: #fff; }
+button.largo:disabled { opacity: 0.5; cursor: default; }
+#btn-piscar.ativo { background-color: #ff2d2d; border-color: #ff2d2d; color: #fff; }
 #btn-nova-linha { flex-grow: 1; }
 .botoes button { width: 100%; text-align: center; margin-bottom: 6px; }
 #btn-ajuda { margin-top: 4px; text-align: center; }
