@@ -926,6 +926,18 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
         document.getElementById('qtd-outros').innerText = contadorOutros;
         document.getElementById('qtd-total').innerText =
             contadorDHP + contadorARR + contadorCRISTA + contadorViga + contadorCRVG + contadorGrampoFech + contadorOutros;
+
+        // Mostra na legenda apenas as categorias que existem neste CSV.
+        // (As demais existem no sistema, só não têm pontos neste levantamento ainda.)
+        const contagemPorCategoria = {
+            dhp: contadorDHP, arr: contadorARR, crista: contadorCRISTA,
+            viga: contadorViga, crvg: contadorCRVG,
+            grampofech: contadorGrampoFech, outros: contadorOutros,
+        };
+        document.querySelectorAll('#legenda-painel .legenda-item[data-categoria]').forEach(item => {
+            const n = contagemPorCategoria[item.dataset.categoria] || 0;
+            item.style.display = n > 0 ? '' : 'none';
+        });
     }
 
     // Filtros por prefixo
