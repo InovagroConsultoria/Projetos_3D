@@ -60,7 +60,7 @@ export const TALUDES = [
     },
     {
         nome: "Talude T-6",
-        glb:  "Superficie/t6t7/t6_superficie.glb",
+        glb:  "Superficie/t6t7/t6.glb",
         csv:  "Superficie/t6t7/Pontos_t6.csv",
         data: "",
         vista: { flipH: true },
