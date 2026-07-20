@@ -57,8 +57,6 @@ function setModo(edicao) {
     modoEdicao = edicao;
     document.body.classList.toggle('modo-visualizacao', !edicao);
     document.getElementById('titulo-talude').textContent = (edicao ? 'Editor — ' : 'Visualização 2D — ') + nomeTalude;
-    const rot = document.getElementById('rotulo-categorias');
-    if (rot) rot.textContent = edicao ? 'Categorias visíveis' : 'Legenda';
     if (!edicao) { cancelarSelecao(); fecharMiniCard(); }
     fecharCards();
     montarFiltroCategorias(); atualizarPainelLinhas(); atualizarStatus(); draw();
@@ -1065,7 +1063,12 @@ function atualizarPainelDivisorias() {
 //  Painéis e filtros
 // =============================================================
 function montarFiltroCategorias() {
-    const cont = document.getElementById('filtro-categorias'); cont.innerHTML = '';
+    // Edição: checkboxes no card 🏷️. Visualização: legenda fixa no canto.
+    const cardCont = document.getElementById('filtro-categorias');
+    const fixo = document.getElementById('legenda-fixa');
+    const fixoCont = document.getElementById('legenda-fixa-itens');
+    cardCont.innerHTML = ''; fixoCont.innerHTML = '';
+    const cont = modoEdicao ? cardCont : fixoCont;
     CATS.forEach(c => {
         const n = points.filter(p => !p.deleted && p.cat === c.key).length;
         if (n === 0) return;
@@ -1109,6 +1112,8 @@ function montarFiltroCategorias() {
             cont.appendChild(item);
         }
     }
+    // Legenda fixa só aparece no modo visualização e quando há itens.
+    fixo.classList.toggle('hidden', modoEdicao || fixoCont.childElementCount === 0);
 }
 function atualizarPainelLinhas() {
     const cont = document.getElementById('lista-linhas');

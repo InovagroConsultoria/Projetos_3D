@@ -32,15 +32,15 @@
     <div id="toolbar">
         <button class="tool-btn so-edicao" data-card="card-linhas" title="Linhas">📏</button>
         <button class="tool-btn" data-card="card-exibicao" title="Exibição">👁️</button>
-        <button class="tool-btn" data-card="card-categorias" title="Legenda / categorias">🏷️</button>
+        <button class="tool-btn so-edicao" data-card="card-categorias" title="Categorias visíveis">🏷️</button>
         <button class="tool-btn so-edicao" data-card="card-ferramentas" title="Ferramentas">🛠️</button>
         <button class="tool-btn so-edicao" data-card="card-exportar" title="Exportar">📤</button>
         <div class="tool-sep"></div>
         <button class="tool-btn" id="btn-enquadrar" title="Enquadrar">⛶</button>
         <button class="tool-btn" id="btn-medir" title="Medir distância entre pontos">↔️</button>
-        <button class="tool-btn" id="btn-abrir-csv" title="Abrir CSV do computador (edição local)">📂</button>
+        <button class="tool-btn so-edicao" id="btn-abrir-csv" title="Abrir CSV do computador (edição local)">📂</button>
         <button class="tool-btn destaque so-visu" id="btn-editar" title="Editar">✏️</button>
-        <button class="tool-btn" id="btn-ajuda" title="Como usar">❓</button>
+        <button class="tool-btn so-edicao" id="btn-ajuda" title="Como usar">❓</button>
     </div>
 
     <!-- Cards de interação -->
@@ -107,6 +107,12 @@
 
     <!-- Resumo (canto inferior esquerdo) -->
     <div id="status-chip"><div id="status-barra"></div></div>
+
+    <!-- Legenda fixa no canto (só no modo visualização) -->
+    <div id="legenda-fixa" class="so-visu hidden">
+        <div class="legenda-titulo">Legenda</div>
+        <div id="legenda-fixa-itens"></div>
+    </div>
 
     <!-- Abrir CSV do computador (edição local, sem GitHub) -->
     <input type="file" id="csv-local" accept=".csv,.txt" style="display:none">
