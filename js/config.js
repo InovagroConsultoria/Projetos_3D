@@ -77,6 +77,12 @@ export const TALUDES = [
         vista: { flipH: true, guide: [{ e: 231559.332, n: 6716069.862 }, { e: 231541.913, n: 6716079.816 }, { e: 231532.581, n: 6716092.880 }, { e: 231525.738, n: 6716123.363 }, { e: 231528.849, n: 6716152.602 }, { e: 231538.180, n: 6716173.754 }, { e: 231567.419, n: 6716199.882 }, { e: 231614.077, n: 6716237.831 }, { e: 231643.939, n: 6716261.471 }] },
     },
     {
+        nome: "Talude T7-8",
+        glb:  "Superficie/Superficie_t78/T78.glb",
+        csv:  "Superficie/Superficie_t78/Pontos_t78.csv",
+        data: "",
+    },
+    {
         nome: "Talude T-10",
         glb:  "Superficie/t_10/superficie_t10.glb",
         csv:  "Superficie/t_10/Pontos_t10_visu.csv",
