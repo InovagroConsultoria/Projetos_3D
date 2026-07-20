@@ -48,6 +48,8 @@ let numInvertido = false; // inverte o sentido da numeração (talude nomeado es
 let enabledCats = new Set(['outros']); // por padrão só os grampos de grade
 let modoExcluir = false; // modo de exclusão de pontos (clique/caixa/contorno excluem)
 let modoEdicao = false;  // false = Visualizador de Linhas (padrão); true = edição local
+let piscarNaoAtrib = false; // pisca (halo pulsante) os pontos ainda sem linha
+let piscarRAF = null;    // handle do requestAnimationFrame do piscar
 
 // --- Medição de distância entre pontos conhecidos ---
 let medindo = false;
@@ -57,9 +59,30 @@ function setModo(edicao) {
     modoEdicao = edicao;
     document.body.classList.toggle('modo-visualizacao', !edicao);
     document.getElementById('titulo-talude').textContent = (edicao ? 'Editor — ' : 'Visualização 2D — ') + nomeTalude;
-    if (!edicao) { cancelarSelecao(); fecharMiniCard(); }
+    if (!edicao) { cancelarSelecao(); fecharMiniCard(); pararPiscar(); }
     fecharCards();
     montarFiltroCategorias(); atualizarPainelLinhas(); atualizarStatus(); draw();
+}
+
+// --- Piscar pontos sem linha (só edição) ---
+function alternarPiscar() {
+    piscarNaoAtrib = !piscarNaoAtrib;
+    const btn = document.getElementById('btn-piscar');
+    if (btn) btn.classList.toggle('ativo', piscarNaoAtrib);
+    if (piscarNaoAtrib) { if (!piscarRAF) loopPiscar(); }
+    else pararPiscar();
+    atualizarStatus();
+}
+function loopPiscar() {
+    draw(); // draw() usa performance.now() para o pulso enquanto piscarNaoAtrib está ativo
+    piscarRAF = piscarNaoAtrib ? requestAnimationFrame(loopPiscar) : null;
+}
+function pararPiscar() {
+    piscarNaoAtrib = false;
+    if (piscarRAF) { cancelAnimationFrame(piscarRAF); piscarRAF = null; }
+    const btn = document.getElementById('btn-piscar');
+    if (btn) btn.classList.remove('ativo');
+    draw();
 }
 
 // --- Cards de interação (abertos pelos ícones da toolbar) ---
@@ -525,15 +548,25 @@ function draw() {
     });
 
     // Pontos (dot só se a categoria estiver visível)
+    // Pulso 0..1 usado pelo "piscar" dos pontos sem linha (recalculado a cada frame)
+    const pulso = piscarNaoAtrib ? (Math.sin(performance.now() / 260) + 1) / 2 : 0;
     points.forEach(p => {
         if (!catVisivel(p)) return;
         const s = toScreen(p);
         const assigned = p.lineIndex != null;
+        if (piscarNaoAtrib && !assigned) {
+            // halo vermelho pulsante ao redor dos pontos ainda sem linha
+            ctx.beginPath();
+            ctx.arc(s.x, s.y, 7 + pulso * 10, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(255,45,45,${0.32 * (1 - pulso) + 0.08})`;
+            ctx.fill();
+        }
         ctx.beginPath();
         ctx.arc(s.x, s.y, assigned ? 5.5 : 4, 0, Math.PI * 2);
         ctx.fillStyle = assigned ? lines[p.lineIndex].color : CAT_COLOR[p.cat];
         ctx.fill();
-        if (p.lineIndex === currentLineIndex && assigned) { ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke(); }
+        if (piscarNaoAtrib && !assigned) { ctx.strokeStyle = '#ff2d2d'; ctx.lineWidth = 1.5 + pulso * 1.5; ctx.stroke(); }
+        else if (p.lineIndex === currentLineIndex && assigned) { ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5; ctx.stroke(); }
     });
 
     // Nomes — no PDF (rotularTodos) mostra todos: nome renomeado/linha ou, na falta, o nome original do CSV.
@@ -1170,6 +1203,13 @@ function excluirLinha(li) {
 }
 function atualizarStatus() {
     const atribuidos = points.filter(p => p.lineIndex != null).length;
+    const semLinha = ativos().filter(p => p.lineIndex == null).length;
+    const btnP = document.getElementById('btn-piscar');
+    if (btnP) {
+        btnP.textContent = `✨ Piscar pontos sem linha (${semLinha})`;
+        btnP.disabled = semLinha === 0;
+        if (semLinha === 0 && piscarNaoAtrib) pararPiscar();
+    }
     let html = `Pontos ativos: <b>${ativos().length}</b><br>Atribuídos a linhas: <b>${atribuidos}</b><br>Linhas: <b>${lines.length}</b> &middot; Divisórias: <b>${dividers.length}</b>`;
     if (medindo) html = `<b style="color:#0a7d4b">Medir:</b> clique no 1º ponto e depois no 2º. (Esc sai)<br>` + html;
     else if (modoExcluir) html = `<b style="color:#c0392b">Excluir pontos:</b> clique, caixa ou contorno excluem. (Esc sai)<br>` + html;
@@ -1726,6 +1766,7 @@ document.getElementById('btn-desfazer').addEventListener('click', desfazer);
 document.getElementById('btn-detectar').addEventListener('click', detectarLinhas);
 document.getElementById('btn-divisoria').addEventListener('click', alternarModoDivisoria);
 document.getElementById('btn-excluir-pontos').addEventListener('click', alternarModoExcluir);
+document.getElementById('btn-piscar').addEventListener('click', alternarPiscar);
 document.getElementById('btn-medir').addEventListener('click', alternarMedir);
 document.getElementById('btn-abrir-csv').addEventListener('click', () => document.getElementById('csv-local').click());
 document.getElementById('csv-local').addEventListener('change', (e) => {
