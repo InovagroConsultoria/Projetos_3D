@@ -44,6 +44,7 @@ let rotularTodos = false; // ao gerar o PDF: rotula todos os grampos (nome ou id
 let nameAngle = 0;       // ângulo dos rótulos em graus (0 = horizontal) — evita sobreposição
 let nameSize = 11;       // tamanho da fonte dos rótulos (px)
 let flipH = false;       // espelha a vista na horizontal (talude visto de trás)
+let numInvertido = false; // inverte o sentido da numeração (talude nomeado esquerda→direita)
 let enabledCats = new Set(['outros']); // por padrão só os grampos de grade
 let modoExcluir = false; // modo de exclusão de pontos (clique/caixa/contorno excluem)
 let modoEdicao = false;  // false = Visualizador de Linhas (padrão); true = edição local
@@ -286,8 +287,10 @@ function iniciar(csvText) {
 
     montarFiltroCategorias();
     atualizarAvisoSemNome();
+    const preset = presetVistaDoConfig();
+    numInvertido = !!(preset && preset.numLeftToRight); // sentido da numeração é fixo do talude (todo carregamento)
     const tinhaSalvo = restaurarAutosave();
-    if (!tinhaSalvo) aplicarPresetVista(presetVistaDoConfig()); // 1ª visita: vista correta do config
+    if (!tinhaSalvo) aplicarPresetVista(preset); // 1ª visita: vista correta do config
     if (lines.length === 0) detectarLinhasAuto(); // visualizador: linhas pré-definidas carregadas automaticamente
     aplicarGuia(); // se houver eixo-guia salvo, reprojeta por estaqueamento
     if (autoDetectou) inferirDivisorias(); // divisórias visíveis já no 1º carregamento (numeração do CSV)
@@ -792,11 +795,13 @@ function sugerirProximaLetra() { document.getElementById('input-letra').placehol
 
 function ordenarLinha(line) {
     const pts = line.points;
-    if (pts.length <= 2) { if (line.inverted) pts.reverse(); return; }
+    // sentido efetivo = "Inverter" da linha XOR numeração invertida do talude
+    const inv = line.inverted !== numInvertido;
+    if (pts.length <= 2) { if (inv) pts.reverse(); return; }
     const restante = pts.slice();
     let ini = 0;
     for (let i = 1; i < restante.length; i++) {
-        if (line.inverted ? worldX(restante[i]) < worldX(restante[ini]) : worldX(restante[i]) > worldX(restante[ini])) ini = i;
+        if (inv ? worldX(restante[i]) < worldX(restante[ini]) : worldX(restante[i]) > worldX(restante[ini])) ini = i;
     }
     const ordenado = [restante.splice(ini, 1)[0]];
     while (restante.length) {

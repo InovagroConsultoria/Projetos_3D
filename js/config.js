@@ -14,6 +14,8 @@
 //            alguém abre o talude. Gere pelo botão "Exportar vista" no
 //            editor 2D e cole aqui. Ex.:
 //            vista: { flipH: true, nameAngle: 45, guide: [{ e: 231550.3, n: 6715837.5 }, ...] }
+//            numLeftToRight: true -> inverte o sentido da numeração automática
+//            (use quando o talude foi nomeado da esquerda para a direita).
 //
 // OBS.: as datas abaixo foram inferidas pelo nome dos arquivos.
 //       Verifique/ajuste cada uma conforme o levantamento real.
@@ -81,6 +83,9 @@ export const TALUDES = [
         glb:  "Superficie/Superficie_t78/T78.glb",
         csv:  "Superficie/Superficie_t78/Pontos_t78.csv",
         data: "",
+        // numLeftToRight: este talude foi nomeado da esquerda para a direita
+        // (ao contrário dos demais), então a numeração automática é invertida.
+        vista: { flipH: true, numLeftToRight: true },
     },
     {
         nome: "Talude T-10",
