@@ -257,8 +257,29 @@ function aplicarPresetVista(v) {
         const el2 = document.getElementById('valor-angulo'); if (el2) el2.textContent = nameAngle + '°';
     }
     if (Array.isArray(v.guide) && v.guide.length >= 2) guide = v.guide.map(g => ({ e: g.e, n: g.n }));
-    // Cópia (normalizarDivisorias clona) para não mutar o objeto do config.js.
-    if (Array.isArray(v.dividers) && v.dividers.length) dividers = normalizarDivisorias(v.dividers);
+    // Divisórias do config. Formatos aceitos (sempre clonados, nunca mutam o config):
+    //   { name, e, n }                  -> divisória vertical naquele ponto (E,N) do mundo
+    //   { name, pts: [{e, n, elev}] }   -> vértices em (E,N) + cota
+    //   { name, pts: [{h, elev}] }      -> formato antigo (h da vista), mantido por compatibilidade
+    if (Array.isArray(v.dividers) && v.dividers.length) {
+        const { min, max } = faixaElev();
+        dividers = v.dividers.map((d, i) => {
+            const nome = d.name || ('Divisa ' + (i + 1));
+            if (typeof d.e === 'number' && typeof d.n === 'number') {
+                const h = enParaH(d.e, d.n);
+                return { name: nome, pts: [{ h, elev: max + 2 }, { h, elev: min - 2 }] };
+            }
+            if (Array.isArray(d.pts) && d.pts.length >= 2) {
+                return {
+                    name: nome,
+                    pts: d.pts.map((p, vi) => (typeof p.e === 'number' && typeof p.n === 'number')
+                        ? { h: enParaH(p.e, p.n), elev: typeof p.elev === 'number' ? p.elev : (vi === 0 ? max + 2 : min - 2) }
+                        : { h: p.h, elev: p.elev }),
+                };
+            }
+            return null;
+        }).filter(Boolean);
+    }
 }
 // Gera o trecho pronto para colar no config.js (espelho + ângulo + eixo-guia).
 function exportarVista() {
@@ -269,9 +290,19 @@ function exportarVista() {
         campos.push(`guide: [${g}]`);
     }
     if (dividers.length) {
-        // Divisórias em (h, elev) — mesmo espaço do eixo-guia acima, se houver.
+        // Ancoradas em (E, N) reais: assim caem sempre no mesmo ponto do mundo,
+        // independente do eixo (PCA/estaqueamento) recalculado no carregamento.
         const d = dividers.map(dv => {
-            const pts = dv.pts.map(p => `{ h: ${(+p.h).toFixed(3)}, elev: ${(+p.elev).toFixed(3)} }`).join(', ');
+            const hs = dv.pts.map(p => +p.h);
+            const vertical = hs.every(h => Math.abs(h - hs[0]) < 1e-6);
+            if (vertical) {
+                const c = hParaEN(hs[0]);
+                return `{ name: ${JSON.stringify(dv.name)}, e: ${c.e.toFixed(3)}, n: ${c.n.toFixed(3)} }`;
+            }
+            const pts = dv.pts.map(p => {
+                const c = hParaEN(+p.h);
+                return `{ e: ${c.e.toFixed(3)}, n: ${c.n.toFixed(3)}, elev: ${(+p.elev).toFixed(3)} }`;
+            }).join(', ');
             return `{ name: ${JSON.stringify(dv.name)}, pts: [${pts}] }`;
         }).join(', ');
         campos.push(`dividers: [${d}]`);
@@ -366,6 +397,38 @@ function chainage(e, n) {
     }
     return bestS;
 }
+// (E, N) reais -> coordenada horizontal h da vista 2D (estaqueamento ou PCA).
+// É a MESMA conta usada para os pontos e as áreas: ancorar em (E,N) faz a
+// divisória cair sempre no mesmo lugar do mundo, independente da vista.
+function enParaH(e, n) {
+    return guide.length >= 2 ? chainage(e, n) : ((e - mE) * projUX + (n - mN) * projUY);
+}
+// h -> ponto (E, N) representativo sobre o eixo (inverso exato de enParaH).
+function hParaEN(h) {
+    if (guide.length >= 2) {
+        let acc = 0;
+        for (let i = 0; i < guide.length - 1; i++) {
+            const a = guide[i], b = guide[i + 1];
+            const abe = b.e - a.e, abn = b.n - a.n, len = Math.hypot(abe, abn);
+            if (len === 0) continue;
+            if (h <= acc + len || i === guide.length - 2) {
+                const t = (h - acc) / len;
+                return { e: a.e + t * abe, n: a.n + t * abn };
+            }
+            acc += len;
+        }
+        const u = guide[guide.length - 1];
+        return { e: u.e, n: u.n };
+    }
+    return { e: mE + h * projUX, n: mN + h * projUY };
+}
+// Faixa de elevação dos pontos ativos (para divisórias verticais).
+function faixaElev() {
+    let min = Infinity, max = -Infinity;
+    points.forEach(p => { if (!p.deleted) { if (p.elev < min) min = p.elev; if (p.elev > max) max = p.elev; } });
+    if (!isFinite(min)) { min = 0; max = 1; }
+    return { min, max };
+}
 // Recalcula a coordenada horizontal (h) de cada ponto: estaqueamento se houver
 // eixo-guia, senão o PCA original. Reordena/renumera as linhas.
 function aplicarGuia() {
@@ -415,10 +478,7 @@ function parseAreas(txt) {
     return out.filter(a => a.pts.length >= 3);
 }
 function projetarAreas() {
-    const usarGuia = guide.length >= 2;
-    areas.forEach(a => a.pts.forEach(v => {
-        v.h = usarGuia ? chainage(v.e, v.n) : ((v.e - mE) * projUX + (v.n - mN) * projUY);
-    }));
+    areas.forEach(a => a.pts.forEach(v => { v.h = enParaH(v.e, v.n); }));
 }
 // Área EM PLANTA (projeção horizontal E×N) — mesma convenção do levantamento;
 // é o valor usado quando o arquivo não traz a área.
