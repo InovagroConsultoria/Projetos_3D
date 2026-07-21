@@ -257,6 +257,8 @@ function aplicarPresetVista(v) {
         const el2 = document.getElementById('valor-angulo'); if (el2) el2.textContent = nameAngle + '°';
     }
     if (Array.isArray(v.guide) && v.guide.length >= 2) guide = v.guide.map(g => ({ e: g.e, n: g.n }));
+    // Cópia (normalizarDivisorias clona) para não mutar o objeto do config.js.
+    if (Array.isArray(v.dividers) && v.dividers.length) dividers = normalizarDivisorias(v.dividers);
 }
 // Gera o trecho pronto para colar no config.js (espelho + ângulo + eixo-guia).
 function exportarVista() {
@@ -265,6 +267,14 @@ function exportarVista() {
     if (guide.length >= 2) {
         const g = guide.map(v => `{ e: ${(+v.e).toFixed(3)}, n: ${(+v.n).toFixed(3)} }`).join(', ');
         campos.push(`guide: [${g}]`);
+    }
+    if (dividers.length) {
+        // Divisórias em (h, elev) — mesmo espaço do eixo-guia acima, se houver.
+        const d = dividers.map(dv => {
+            const pts = dv.pts.map(p => `{ h: ${(+p.h).toFixed(3)}, elev: ${(+p.elev).toFixed(3)} }`).join(', ');
+            return `{ name: ${JSON.stringify(dv.name)}, pts: [${pts}] }`;
+        }).join(', ');
+        campos.push(`dividers: [${d}]`);
     }
     const snippet = `vista: { ${campos.join(', ')} },`;
     const base = (nomeTalude || 'talude').replace(/[^\w-]+/g, '_');
