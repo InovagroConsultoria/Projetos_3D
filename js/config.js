@@ -69,9 +69,9 @@ export const TALUDES = [
     },
     {
         nome: "Talude T-6",
-        glb:  "Superficie/t6t7/t6_superficie.glb",
+        glb:  "Superficie/t6t7/t6.glb",
         csv:  "Superficie/t6t7/Pontos_t6.csv",
-        data: "",
+        data: "16/07/2026",
         vista: { flipH: true },
     },
     {
@@ -84,14 +84,14 @@ export const TALUDES = [
         nome: "Talude T-8",
         glb:  "Superficie/t8/t8_0604.glb",
         csv:  "Superficie/t8/Total_t8.csv",
-        data: "06/04/2026",
-        vista: { flipH: true, guide: [{ e: 231559.332, n: 6716069.862 }, { e: 231541.913, n: 6716079.816 }, { e: 231532.581, n: 6716092.880 }, { e: 231525.738, n: 6716123.363 }, { e: 231528.849, n: 6716152.602 }, { e: 231538.180, n: 6716173.754 }, { e: 231567.419, n: 6716199.882 }, { e: 231614.077, n: 6716237.831 }, { e: 231643.939, n: 6716261.471 }] },
+        data: "",
+        vista: { flipH: true },
     },
     {
-        nome: "Talude T7-8",
+        nome: "Talude T-7-8",
         glb:  "Superficie/Superficie_t78/T78.glb",
         csv:  "Superficie/Superficie_t78/Pontos_t78.csv",
-        data: "",
+        data: "16/07/2026",
         // numLeftToRight: este talude foi nomeado da esquerda para a direita
         // (ao contrário dos demais), então a numeração automática é invertida.
         vista: { flipH: true, numLeftToRight: true },
@@ -100,7 +100,7 @@ export const TALUDES = [
         nome: "Talude T-10",
         glb:  "Superficie/t_10/superficie_t10.glb",
         csv:  "Superficie/t_10/Pontos_t10_visu.csv",
-        data: "",
+        data: "01/06/2026",
         vista: { flipH: true },
     },
     {
@@ -131,7 +131,7 @@ export const TALUDES = [
         nome: "Talude T-18",
         glb:  "Superficie/t-18/t18_03_2026.glb",
         csv:  "Superficie/t-18/Todos_pontos_t18_VZ.csv",
-        data: "03/2026",
+        data: "01/03/2026",
         vista: { flipH: false },
     },
 ];
