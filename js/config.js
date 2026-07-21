@@ -17,8 +17,13 @@
 //            numLeftToRight: true -> inverte o sentido da numeração automática
 //            (use quando o talude foi nomeado da esquerda para a direita).
 //            dividers -> divisórias (linhas de corte da numeração) fixadas para
-//            todos, em coordenadas (h, elev). Também vêm do "Exportar vista". Ex.:
-//            dividers: [{ name: "Divisa 1", pts: [{ h: 12.3, elev: 678.9 }, ...] }]
+//            todos, ancoradas em coordenadas REAIS (E, N) — as mesmas do CSV.
+//            Vêm do "Exportar vista", mas também podem ser feitas à mão em
+//            qualquer software topográfico: basta o par E,N onde a divisa passa.
+//            dividers: [{ name: "Divisa 1", e: 231550.312, n: 6715837.482 }]
+//            A divisória fica vertical, cobrindo toda a altura do talude.
+//            Para uma divisa inclinada/quebrada, informe os vértices:
+//            dividers: [{ name: "Divisa 1", pts: [{ e: ..., n: ..., elev: ... }, ...] }]
 //            Se houver dividers no config, a inferência automática é ignorada.
 //
 // OBS.: as datas abaixo foram inferidas pelo nome dos arquivos.
