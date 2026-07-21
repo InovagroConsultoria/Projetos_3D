@@ -103,7 +103,7 @@ export const TALUDES = [
         glb:  "Superficie/t_16/T16_1306.glb",
         csv:  "Superficie/t_16/Todos_Pontos_t16.csv",
         data: "13/06/2026",
-        vista: { flipH: false },
+        vista: { flipH: false, dividers: [{ name: "Divisa B-A", pts: [{ h: 14.009, elev: 204.373 }, { h: 14.165, elev: 205.777 }, { h: 15.483, elev: 207.824 }, { h: 15.907, elev: 209.112 }, { h: 16.989, elev: 209.562 }, { h: 16.795, elev: 210.989 }, { h: 16.344, elev: 212.151 }, { h: 15.321, elev: 212.238 }, { h: 15.096, elev: 213.694 }, { h: 15.186, elev: 215.141 }, { h: 21.423, elev: 215.823 }, { h: 20.275, elev: 218.787 }, { h: 17.302, elev: 219.463 }] }] },
     },
     {
         nome: "Talude T-18",
