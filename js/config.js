@@ -16,6 +16,10 @@
 //            vista: { flipH: true, nameAngle: 45, guide: [{ e: 231550.3, n: 6715837.5 }, ...] }
 //            numLeftToRight: true -> inverte o sentido da numeração automática
 //            (use quando o talude foi nomeado da esquerda para a direita).
+//            dividers -> divisórias (linhas de corte da numeração) fixadas para
+//            todos, em coordenadas (h, elev). Também vêm do "Exportar vista". Ex.:
+//            dividers: [{ name: "Divisa 1", pts: [{ h: 12.3, elev: 678.9 }, ...] }]
+//            Se houver dividers no config, a inferência automática é ignorada.
 //
 // OBS.: as datas abaixo foram inferidas pelo nome dos arquivos.
 //       Verifique/ajuste cada uma conforme o levantamento real.
