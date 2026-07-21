@@ -84,7 +84,7 @@ export const TALUDES = [
         nome: "Talude T-8",
         glb:  "Superficie/t8/t8_0604.glb",
         csv:  "Superficie/t8/Total_t8.csv",
-        data: "",
+        data: "16/07/2026",
         vista: { flipH: true },
     },
     {
