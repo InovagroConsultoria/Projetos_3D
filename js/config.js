@@ -85,7 +85,7 @@ export const TALUDES = [
         glb:  "Superficie/t8/t8_0604.glb",
         csv:  "Superficie/t8/Total_t8.csv",
         data: "16/07/2026",
-        vista: { flipH: true },
+        vista: { flipH: true, guide: [{ e: 231559.111, n: 6716071.921 }, { e: 231543.551, n: 6716083.173 }, { e: 231528.469, n: 6716104.958 }, { e: 231526.314, n: 6716129.615 }, { e: 231528.948, n: 6716157.864 }, { e: 231543.551, n: 6716183.000 }, { e: 231632.366, n: 6716251.706 }] },
     },
     {
         nome: "Talude T-7-8",
