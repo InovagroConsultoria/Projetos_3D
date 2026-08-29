@@ -48,12 +48,13 @@ let highlightedPoint = null;
 const POINT_GEOMETRY = new THREE.SphereGeometry(0.5, 8, 8);
 const CATEGORY_MATERIALS = {
     dhp:        new THREE.MeshBasicMaterial({ color: 0x0000ff }), // Azul
-    arr:        new THREE.MeshBasicMaterial({ color: 0xffff00 }), // Amarelo
+    arr:        new THREE.MeshBasicMaterial({ color: 0xffff00 }), // Amarelo (Ensaio de Arrancamento)
     crista:     new THREE.MeshBasicMaterial({ color: 0x800080 }), // Roxo
     viga:       new THREE.MeshBasicMaterial({ color: 0x808080 }), // Cinza
     crvg:       new THREE.MeshBasicMaterial({ color: 0xff8c00 }), // Laranja (Grampo Crista de Viga)
     grampofech: new THREE.MeshBasicMaterial({ color: 0x00ff00 }), // Verde limão (Grampo de Fechamento)
     outros:     new THREE.MeshBasicMaterial({ color: 0xff0000 }), // Vermelho
+    naoexec:    new THREE.MeshBasicMaterial({ color: 0x00e5ff }), // Ciano (não executados)
 };
 
 // --- Estado da busca (suporta IDs duplicados) ---
@@ -63,7 +64,7 @@ let lastSearchQuery = '';
 
 // --- Estado de visibilidade dos rótulos ---
 let enabledPrefixes = new Set(); // prefixos de nome ativos (filtro da engrenagem)
-let enabledCategories = new Set(['dhp', 'arr', 'crista', 'viga', 'crvg', 'grampofech', 'outros']); // categorias ativas (legenda)
+let enabledCategories = new Set(['dhp', 'arr', 'crista', 'viga', 'crvg', 'grampofech', 'outros', 'naoexec']); // categorias ativas (legenda)
 let labelsVisibleByZoom = true;  // rótulos visíveis na distância atual?
 
 // --- Zoom suave (inércia na roda do mouse e pinça no toque) ---
@@ -839,6 +840,7 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
     let contadorCRVG = 0;
     let contadorGrampoFech = 0;
     let contadorOutros = 0;
+    let contadorNaoExec = 0;
 
     rows.forEach(parts => {
         if (parts.length < 4) return;
@@ -864,10 +866,16 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
         // Categoria e contagem
         let categoria;
         const idMaiusculo = pointID.toUpperCase();
-        if (idMaiusculo.includes('DHP')) {
+        if (idMaiusculo.startsWith('NE')) {
+            // "NE" é prefixo de não executado ("NEJ1" = "J1 não executado") e vem
+            // antes de tudo: o grampo pode ser de qualquer tipo, o que importa é o status.
+            categoria = 'naoexec';
+            contadorNaoExec++;
+        } else if (idMaiusculo.includes('DHP')) {
             categoria = 'dhp';
             contadorDHP++;
-        } else if (idMaiusculo.includes('ARR')) {
+        } else if (idMaiusculo.includes('ARR') || idMaiusculo.startsWith('EA')) {
+            // Ensaio de Arrancamento: "EA1" (nome atual) e "ARR1" (nome antigo).
             categoria = 'arr';
             contadorARR++;
         } else if (idMaiusculo.includes('CRVG')) {
@@ -924,8 +932,9 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
         document.getElementById('qtd-crvg').innerText = contadorCRVG;
         document.getElementById('qtd-grampofech').innerText = contadorGrampoFech;
         document.getElementById('qtd-outros').innerText = contadorOutros;
+        document.getElementById('qtd-naoexec').innerText = contadorNaoExec;
         document.getElementById('qtd-total').innerText =
-            contadorDHP + contadorARR + contadorCRISTA + contadorViga + contadorCRVG + contadorGrampoFech + contadorOutros;
+            contadorDHP + contadorARR + contadorCRISTA + contadorViga + contadorCRVG + contadorGrampoFech + contadorOutros + contadorNaoExec;
 
         // Mostra na legenda apenas as categorias que existem neste CSV.
         // (As demais existem no sistema, só não têm pontos neste levantamento ainda.)
@@ -933,6 +942,7 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
             dhp: contadorDHP, arr: contadorARR, crista: contadorCRISTA,
             viga: contadorViga, crvg: contadorCRVG,
             grampofech: contadorGrampoFech, outros: contadorOutros,
+            naoexec: contadorNaoExec,
         };
         document.querySelectorAll('#legenda-painel .legenda-item[data-categoria]').forEach(item => {
             const n = contagemPorCategoria[item.dataset.categoria] || 0;
