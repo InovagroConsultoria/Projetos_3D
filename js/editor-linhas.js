@@ -18,12 +18,13 @@ const ctx = canvas.getContext('2d');
 // Categorias (mesmas cores do visualizador 3D).
 const CATS = [
     { key: 'dhp', label: 'DHP', color: '#0000ff' },
-    { key: 'arr', label: 'Arrancamento (ARR)', color: '#ffff00' },
+    { key: 'arr', label: 'Ensaio de Arrancamento', color: '#ffff00' },
     { key: 'crista', label: 'CRISTA', color: '#800080' },
     { key: 'viga', label: 'Viga', color: '#808080' },
     { key: 'crvg', label: 'Grampos Crista de Viga', color: '#ff8c00' },
     { key: 'grampofech', label: 'Grampo de Fechamento', color: '#00ff00' },
     { key: 'outros', label: 'Grampos (grade)', color: '#9aa0a6' },
+    { key: 'naoexec', label: 'Não executados', color: '#00e5ff' },
 ];
 const CAT_COLOR = {}; const CAT_LABEL = {};
 CATS.forEach(c => { CAT_COLOR[c.key] = c.color; CAT_LABEL[c.key] = c.label; });
@@ -45,9 +46,10 @@ let nameAngle = 0;       // ângulo dos rótulos em graus (0 = horizontal) — e
 let nameSize = 11;       // tamanho da fonte dos rótulos (px)
 let flipH = false;       // espelha a vista na horizontal (talude visto de trás)
 let numInvertido = false; // inverte o sentido da numeração (talude nomeado esquerda→direita)
-let enabledCats = new Set(['outros']); // por padrão só os grampos de grade
+let enabledCats = new Set(['outros', 'naoexec']); // por padrão os grampos de grade + os não executados
 let modoExcluir = false; // modo de exclusão de pontos (clique/caixa/contorno excluem)
 let modoEdicao = false;  // false = Visualizador de Linhas (padrão); true = edição local
+let abrirEmEdicao = false; // próximo iniciar() abre direto em edição (CSV local)
 let piscarNaoAtrib = false; // pisca (halo pulsante) os pontos ainda sem linha
 let piscarRAF = null;    // handle do requestAnimationFrame do piscar
 
@@ -168,7 +170,7 @@ function resetarEstado() {
     currentLineIndex = -1; autoDetectou = false;
     flipH = false; topView = false; modoExcluir = false;
     medindo = false; medA = null; medB = null;
-    enabledCats = new Set(['outros']);
+    enabledCats = new Set(['outros', 'naoexec']);
     const chk = document.getElementById('chk-flip'); if (chk) chk.checked = false;
     document.getElementById('btn-medir').classList.remove('ativo');
     document.getElementById('btn-excluir-pontos').classList.remove('ativo');
@@ -181,6 +183,7 @@ function carregarCsvLocal(file) {
     const reader = new FileReader();
     reader.onload = () => {
         resetarEstado();
+        abrirEmEdicao = true; // CSV do computador é para editar: já abre no modo edição
         nomeTalude = file.name.replace(/\.(csv|txt)$/i, '') + ' (local)';
         STORAGE_KEY = 'editor-linhas:local:' + file.name;
         PDF_KEY = STORAGE_KEY + ':pdf';
@@ -204,8 +207,12 @@ function showError(msg, detalhe) {
 
 function categoriaDe(id) {
     const u = id.toUpperCase();
+    // "NE" é prefixo de não executado ("NEJ1" = "J1 não executado") e vem
+    // antes de tudo: o grampo pode ser de qualquer tipo, o que importa é o status.
+    if (u.startsWith('NE')) return 'naoexec';
     if (u.includes('DHP')) return 'dhp';
-    if (u.includes('ARR')) return 'arr';
+    // Ensaio de Arrancamento: "EA1" (nome atual) e "ARR1" (nome antigo).
+    if (u.includes('ARR') || u.startsWith('EA')) return 'arr';
     if (u.includes('CRVG')) return 'crvg';
     if (u.startsWith('GF')) return 'grampofech';
     if (u.includes('CRISTA') || u.startsWith('CR')) return 'crista';
@@ -349,7 +356,9 @@ function iniciar(csvText) {
 
     montarFiltroCategorias();
     atualizarAvisoSemNome();
-    const preset = presetVistaDoConfig();
+    // CSV do computador não tem preset: usar o do ?csv= da URL aplicaria a vista
+    // e as divisórias do talude anterior num arquivo que não tem relação com ele.
+    const preset = abrirEmEdicao ? null : presetVistaDoConfig();
     numInvertido = !!(preset && preset.numLeftToRight); // sentido da numeração é fixo do talude (todo carregamento)
     const tinhaSalvo = restaurarAutosave();
     if (!tinhaSalvo) aplicarPresetVista(preset); // 1ª visita: vista correta do config
@@ -362,7 +371,8 @@ function iniciar(csvText) {
 
     const ls = document.getElementById('loading-screen');
     ls.classList.add('hidden'); setTimeout(() => { ls.style.display = 'none'; }, 400);
-    setModo(false); // abre no modo Visualizador de Linhas
+    setModo(abrirEmEdicao); // CSV do config: modo visualização. CSV local: edição.
+    abrirEmEdicao = false;
     sugerirProximaLetra();
     carregarAreas(); // telas de proteção (arquivo opcional ?areas=)
 }
