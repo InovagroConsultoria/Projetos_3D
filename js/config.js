@@ -53,8 +53,8 @@ export const OBRAS = [
         sub: "Visualização 3D e 2D disponíveis",
         cardLink: null,
         acoes: [
-            { label: "Visualizar 3D", viz: { glb: "Superficie/Perau/Perau_2506.glb", csv: "Superficie/Perau/Todos_grampos_perau.csv", data: "25/06/2026" } },
-            { label: "Visualização 2D", editor: { csv: "Superficie/Perau/Todos_grampos_perau.csv", nome: "Obra do Perau", glb: "Superficie/Perau/Perau_2506.glb", data: "25/06/2026", vista: { flipH: true, guide: [{ e: 230427.605, n: 6716413.332 }, { e: 230485.879, n: 6716469.370 }] } } },
+            { label: "Visualizar 3D", viz: { glb: "Superficie/Perau/perau_07.glb", csv: "Superficie/Perau/Todos_grampos_perau.csv", data: "29/08/2026" } },
+            { label: "Visualização 2D", editor: { csv: "Superficie/Perau/Todos_grampos_perau.csv", nome: "Obra do Perau", glb: "Superficie/Perau/Perau_2506.glb", data: "29/08/2026", vista: { flipH: true, guide: [{ e: 230427.605, n: 6716413.332 }, { e: 230485.879, n: 6716469.370 }] } } },
         ],
     },
 ];
