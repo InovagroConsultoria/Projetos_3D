@@ -1619,8 +1619,19 @@ function ligarArrastePrancha() {
 // =============================================================
 //  Autosave
 // =============================================================
+// Assinatura do CSV carregado (nomes + posições). O autosave guarda cada ponto
+// pelo número da linha do arquivo; quando o CSV é atualizado esse número passa a
+// apontar para outro grampo, então é preciso saber que o arquivo mudou.
+function assinaturaCsv() {
+    let h = 0x811c9dc5;
+    points.forEach(p => {
+        const s = p.rowIndex + ':' + p.id;
+        for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
+    });
+    return (h >>> 0).toString(36) + '.' + points.length;
+}
 function salvarAutosave() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ flipH, nameAngle, nameSize, dividers, guide, del: points.filter(p => p.deleted).map(p => p.rowIndex), lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ csv: assinaturaCsv(), flipH, nameAngle, nameSize, dividers, guide, del: points.filter(p => p.deleted).map(p => p.rowIndex), lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
 }
 function restaurarAutosave() {
     let dados; try { dados = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return false; }
@@ -1638,6 +1649,10 @@ function restaurarAutosave() {
     }
     if (Array.isArray(dados.dividers)) dividers = normalizarDivisorias(dados.dividers);
     if (Array.isArray(dados.guide)) guide = dados.guide.map(g => ({ e: g.e, n: g.n }));
+    // Se o CSV foi atualizado desde o último acesso, os pontos salvos por número
+    // de linha do arquivo apontam para outros grampos (linhas viravam uma teia).
+    // A vista acima é independente do CSV e fica; as linhas são redetectadas.
+    if (dados.csv !== assinaturaCsv()) return true;
     if (Array.isArray(dados.del)) { const ds = new Set(dados.del); points.forEach(p => { if (ds.has(p.rowIndex)) p.deleted = true; }); }
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
     lines = dados.lines.map((l, li) => {
