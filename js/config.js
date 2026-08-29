@@ -100,7 +100,7 @@ export const TALUDES = [
         nome: "Talude T-10",
         glb:  "Superficie/t_10/superficie_t10.glb",
         csv:  "Superficie/t_10/Pontos_t10_visu.csv",
-        data: "01/08/2026",
+        data: "29/08/2026",
         vista: { flipH: true },
     },
     {
