@@ -62,7 +62,7 @@ export const OBRAS = [
 export const TALUDES = [
     {
         nome: "Talude T-5",
-        glb:  "Superficie/t5/t5_1203.glb",
+        glb:  "Superficie/t5/t5_09.glb",
         csv:  "Superficie/t5/Pontos_t5.csv",
         data: "19/09/2026",
         vista: { flipH: true },
