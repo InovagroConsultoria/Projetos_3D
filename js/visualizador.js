@@ -69,6 +69,7 @@ let labelsVisibleByZoom = true;  // rótulos visíveis na distância atual?
 
 // --- Zoom suave (inércia na roda do mouse e pinça no toque) ---
 let desiredZoomDistance = null;  // distância-alvo câmera→alvo; null = sem zoom pendente
+let zoomAnchor = null;           // ponto 3D sob o cursor para onde o zoom converge
 const ZOOM_WHEEL_FACTOR = 1.12;  // quanto cada "passo" da roda multiplica a distância
 const ZOOM_SMOOTHING = 0.18;     // fração interpolada por frame (maior = mais rápido)
 let pinchStartDistance = 0;      // distância entre os dois dedos no início da pinça
@@ -1049,6 +1050,7 @@ function startFlight(endPosition, endTarget) {
     animStartTarget.copy(controls.target);
 
     desiredZoomDistance = null; // cancela zoom suave pendente durante o voo
+    zoomAnchor = null;
     isAnimating = true;
     animStartTime = performance.now();
     controls.enabled = false;
@@ -1096,10 +1098,46 @@ function updateAnimation() {
     }
 }
 
-// Roda do mouse: define a distância-alvo (não move na hora; o animate desliza).
+// Ponto 3D sob a posição de tela: o grampo visível ou a superfície que o raio
+// atingir primeiro; senão, o ponto do raio na profundidade do alvo da órbita
+// (o zoom continua indo "para o cursor" mesmo apontando para o céu).
+function pontoSobCursor(clientX, clientY) {
+    const r = renderer.domElement.getBoundingClientRect();
+    const ndc = new THREE.Vector2(
+        ((clientX - r.left) / r.width) * 2 - 1,
+        -((clientY - r.top) / r.height) * 2 + 1);
+    camera.updateMatrixWorld();
+    raycaster.setFromCamera(ndc, camera);
+    const alvos = currentPointsGroup ? currentPointsGroup.children.filter(m => m.visible) : [];
+    if (currentSurface) alvos.push(currentSurface);
+    const hit = raycaster.intersectObjects(alvos, true)[0];
+    if (hit) return hit.point.clone();
+    const dir = controls.target.clone().sub(camera.position).normalize();
+    const plano = new THREE.Plane().setFromNormalAndCoplanarPoint(dir, controls.target);
+    return raycaster.ray.intersectPlane(plano, new THREE.Vector3());
+}
+
+// Desliza o alvo da órbita pela linha de visão até a profundidade do ponto
+// apontado. A imagem não muda (câmera e direção de visão continuam iguais),
+// mas o limite de aproximação passa a valer em relação ao que se está vendo,
+// e não ao centro do modelo — no Perau, o centro fica a ~80 m das linhas de cima.
+function alinharAlvoAoPonto(p) {
+    const dir = controls.target.clone().sub(camera.position).normalize();
+    const prof = THREE.MathUtils.clamp(p.clone().sub(camera.position).dot(dir),
+        controls.minDistance || 1, controls.maxDistance || Infinity);
+    controls.target.copy(camera.position).addScaledVector(dir, prof);
+}
+
+// Roda do mouse: define a distância-alvo (não move na hora; o animate desliza)
+// e o ponto sob o cursor para onde a câmera vai.
 function onWheel(event) {
     event.preventDefault();
     if (isAnimating || !controls) return;
+    const p = pontoSobCursor(event.clientX, event.clientY);
+    if (p) {
+        if (desiredZoomDistance === null) alinharAlvoAoPonto(p); // só no início do gesto
+        zoomAnchor = p;
+    }
     const base = (desiredZoomDistance !== null)
         ? desiredZoomDistance
         : camera.position.distanceTo(controls.target);
@@ -1119,6 +1157,14 @@ function touchDistance(touches) {
 // Início da pinça: guarda a separação dos dedos e a distância atual da câmera.
 function onTouchStart(event) {
     if (event.touches.length === 2) {
+        // Mesmo comportamento da roda: o zoom vai para o ponto entre os dedos.
+        const p = pontoSobCursor(
+            (event.touches[0].clientX + event.touches[1].clientX) / 2,
+            (event.touches[0].clientY + event.touches[1].clientY) / 2);
+        if (p) {
+            if (desiredZoomDistance === null) alinharAlvoAoPonto(p);
+            zoomAnchor = p;
+        }
         pinchStartDistance = touchDistance(event.touches);
         pinchStartCameraDistance = (desiredZoomDistance !== null)
             ? desiredZoomDistance
@@ -1147,18 +1193,30 @@ function onTouchEnd(event) {
 // Desliza a câmera suavemente até a distância-alvo (inércia do zoom).
 function applySmoothZoom() {
     if (desiredZoomDistance === null) return;
-    const offset = camera.position.clone().sub(controls.target);
-    const atual = offset.length();
-    const proximo = THREE.MathUtils.lerp(atual, desiredZoomDistance, ZOOM_SMOOTHING);
+    const atual = camera.position.distanceTo(controls.target);
+    let proximo = THREE.MathUtils.lerp(atual, desiredZoomDistance, ZOOM_SMOOTHING);
     // Encerra quando estiver perto o bastante do alvo.
-    if (Math.abs(proximo - atual) < Math.max(atual * 0.0008, 0.0005)) {
-        offset.setLength(desiredZoomDistance);
-        camera.position.copy(controls.target).add(offset);
-        desiredZoomDistance = null;
-        return;
+    const fim = Math.abs(proximo - atual) < Math.max(atual * 0.0008, 0.0005);
+    if (fim) proximo = desiredZoomDistance;
+    // Escala com centro no ponto sob o cursor: câmera e alvo se aproximam dele
+    // na mesma proporção, então ele fica parado na tela e o centro de órbita
+    // migra para onde se está olhando. Sem âncora, aproxima do próprio alvo.
+    const f = proximo / atual;
+    const centro = zoomAnchor || controls.target;
+    camera.position.sub(centro).multiplyScalar(f).add(centro);
+    if (zoomAnchor) controls.target.sub(zoomAnchor).multiplyScalar(f).add(zoomAnchor);
+    if (fim) { desiredZoomDistance = null; zoomAnchor = null; }
+}
+
+// O plano de corte próximo acompanha a distância de visão. Fixo em 10 m, ele
+// apagava tudo que estava a menos de 10 m da câmera — ao chegar perto dos
+// grampos, eles sumiam.
+function ajustarPlanoProximo() {
+    const near = THREE.MathUtils.clamp(camera.position.distanceTo(controls.target) * 0.02, 0.05, 10);
+    if (Math.abs(near - camera.near) > camera.near * 0.05) {
+        camera.near = near;
+        camera.updateProjectionMatrix();
     }
-    offset.setLength(proximo);
-    camera.position.copy(controls.target).add(offset);
 }
 
 function animate() {
@@ -1174,6 +1232,7 @@ function animate() {
         applySmoothZoom();
         controls.update();
     }
+    ajustarPlanoProximo();
 
     renderer.render(scene, camera);
     labelRenderer.render(scene, camera);
