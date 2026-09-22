@@ -53,7 +53,7 @@ export const OBRAS = [
         sub: "Visualização 3D e 2D disponíveis",
         cardLink: null,
         acoes: [
-            { label: "Visualizar 3D", viz: { glb: "Superficie/Perau/perau_07.glb", csv: "Superficie/Perau/Todos_grampos_perau.csv", data: "29/08/2026" } },
+            { label: "Visualizar 3D", viz: { glb: "Superficie/Perau/perau_07.glb", csv: "Superficie/Perau/Todos_grampos_perau.csv", data: "22/09/2026" } },
             { label: "Visualização 2D", editor: { csv: "Superficie/Perau/Todos_grampos_perau.csv", nome: "Obra do Perau", glb: "Superficie/Perau/Perau_2506.glb", data: "29/08/2026", vista: { flipH: true, guide: [{ e: 230427.605, n: 6716413.332 }, { e: 230485.879, n: 6716469.370 }] } } },
         ],
     },
@@ -84,7 +84,7 @@ export const TALUDES = [
         nome: "Talude T-8",
         glb:  "Superficie/t8/t8_0604.glb",
         csv:  "Superficie/t8/Total_t8.csv",
-        data: "01/08/2026",
+        data: "22/09/2026",
         vista: { flipH: true, guide: [{ e: 231559.111, n: 6716071.921 }, { e: 231543.551, n: 6716083.173 }, { e: 231528.469, n: 6716104.958 }, { e: 231526.314, n: 6716129.615 }, { e: 231528.948, n: 6716157.864 }, { e: 231543.551, n: 6716183.000 }, { e: 231632.366, n: 6716251.706 }] },
     },
     {
