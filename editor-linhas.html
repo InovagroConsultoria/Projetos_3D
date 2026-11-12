@@ -118,6 +118,28 @@
     <!-- Abrir CSV do computador (edição local, sem GitHub) -->
     <input type="file" id="csv-local" accept=".csv,.txt" style="display:none">
 
+    <!-- Modal: conferir as colunas do CSV do computador antes de carregar -->
+    <div id="colunas-modal" class="hidden">
+        <div class="colunas-modal-inner">
+            <div class="ajuda-modal-cabecalho">
+                <h3>Conferir colunas</h3>
+                <button id="colunas-fechar" class="colunas-x" title="Fechar">✕</button>
+            </div>
+            <div class="colunas-corpo">
+                <p class="colunas-arquivo"><b id="colunas-arquivo"></b><br><span id="colunas-formato"></span></p>
+                <div id="colunas-avisos"></div>
+                <p class="colunas-dica">Veja se cada coluna foi reconhecida. Se alguma estiver errada, escolha na lista acima dela o que ela contém.</p>
+                <div class="colunas-tabela-wrap"><table id="colunas-tabela"></table></div>
+                <div id="colunas-status"></div>
+                <small class="colunas-ajuda">Aceita vírgula, ponto e vírgula, TAB ou espaços; decimal com ponto ou vírgula; com ou sem cabeçalho; colunas em qualquer ordem. Coordenadas em UTM (metros). <a href="#" id="colunas-modelo">Baixar planilha-modelo</a></small>
+            </div>
+            <div class="editar-acoes colunas-acoes">
+                <button id="colunas-cancelar">Cancelar</button>
+                <button id="colunas-carregar" class="primario">Carregar pontos</button>
+            </div>
+        </div>
+    </div>
+
 
     <!-- Modal: como usar -->
     <div id="ajuda-modal" class="hidden">
@@ -133,6 +155,7 @@
                 <li><b>Cor da linha:</b> clique na <b>bolinha colorida</b> do card para abrir o seletor RGB.</li>
                 <li><b>Remover da linha:</b> caixa/contorno sobre pontos <b>da linha atual</b> remove-os dela (se a seleção tiver pontos livres, eles são adicionados).</li>
                 <li><b>Inverter vista:</b> espelha o talude na horizontal (útil quando ele aparece de trás).</li>
+                <li><b>Abrir CSV do computador (📂):</b> aceita CSV ou TXT com nome, Este, Norte e Cota em qualquer ordem, separados por vírgula, ponto e vírgula, TAB ou espaços, com ou sem cabeçalho (inclusive o CSV salvo pelo Excel). Antes de carregar, confira as colunas reconhecidas e corrija se preciso. Coordenadas em UTM (metros).</li>
                 <li><b>Contorno livre:</b> clique e <b>arraste</b> contornando os pontos; ao soltar, seleciona o que estiver dentro.</li>
                 <li><b>Caixa:</b> <b>clique</b> num ponto vazio (1º canto), mova e <b>clique de novo</b> (canto oposto) para fechar.</li>
                 <li><b>Um ponto:</b> clique nele para adicionar/remover.</li>
