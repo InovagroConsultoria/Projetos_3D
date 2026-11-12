@@ -3,6 +3,7 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { CSS2DRenderer, CSS2DObject } from 'three/addons/renderers/CSS2DRenderer.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+import { lerPontos, descreverFormato } from './pontos-csv.js';
 
 // =============================================================
 //  Parâmetros da URL
@@ -757,17 +758,6 @@ function mostrarInfoArea3d(mesh) {
     document.getElementById('info-box-container').style.display = 'block';
 }
 
-// Extrai as coordenadas de uma linha conforme o formato detectado:
-//  - Formato novo (TAB, >=7 colunas): ID, E, N, Elev, E, N, Elev
-//    -> usa o 2º conjunto (colunas 5-7), único sempre preenchido (ex.: CRVG).
-//  - Formato antigo (vírgula, 5 colunas): ID, E, Elev, N.
-function extrairCoords(parts) {
-    if (parts.length >= 7) {
-        return { e: parseFloat(parts[4]), n: parseFloat(parts[5]), elev: parseFloat(parts[6]) };
-    }
-    return { e: parseFloat(parts[1]), elev: parseFloat(parts[2]), n: parseFloat(parts[3]) };
-}
-
 // =============================================================
 //  Carregamento dos pontos (.csv)
 // =============================================================
@@ -784,52 +774,50 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
     filterContainer.innerHTML = '';
     const prefixes = new Set();
 
-    // Parser robusto: ignora linhas vazias, normaliza CR/LF e espaços.
-    // Auto-detecta o delimitador (TAB ou vírgula) pela primeira linha.
-    const linhas = csvData.split(/\r?\n/).map(l => l.trim()).filter(l => l !== "");
-    if (linhas.length === 0) {
+    // Formato reconhecido sozinho: separador, decimal, cabeçalho e ordem das colunas.
+    const leitura = lerPontos(csvData);
+    leitura.avisos.forEach(a => console.warn('CSV:', a));
+    const pontos = leitura.pontos;
+    if (pontos.length === 0) {
         console.warn("Arquivo CSV vazio ou inválido.");
         filterContainer.innerHTML = '<small>Não foram encontrados pontos.</small>';
         return;
     }
-    const delimiter = linhas[0].includes('\t') ? '\t' : ',';
-    const rows = linhas.map(l => l.split(delimiter).map(c => c.trim()));
+    console.log('Formato do CSV: ' + descreverFormato(leitura));
 
     let originE = parseFloat(document.getElementById('originE').value) || 0;
     let originElev = parseFloat(document.getElementById('originElev').value) || 0;
     let originN = parseFloat(document.getElementById('originN').value) || 0;
 
     // Na primeira carga, usa o primeiro ponto como origem (para aproximar de 0,0,0).
+    // (o primeiro ponto válido: um cabeçalho não pode virar a origem)
     if (originE === 0 && originElev === 0 && originN === 0 && !isReload) {
-        const first = rows[0];
-        if (first.length >= 4) {
-            const c0 = extrairCoords(first);
-            originE = c0.e;       // Easting
-            originElev = c0.elev; // Elevação
-            originN = c0.n;       // Northing
+        const c0 = pontos[0];
+        originE = c0.e;       // Easting
+        originElev = c0.elev; // Elevação
+        originN = c0.n;       // Northing
 
-            document.getElementById('originE').value = originE;
-            document.getElementById('originElev').value = originElev;
-            document.getElementById('originN').value = originN;
+        document.getElementById('originE').value = originE;
+        document.getElementById('originElev').value = originElev;
+        document.getElementById('originN').value = originN;
 
-            if (currentSurface) {
-                currentSurface.position.set(-originE, -originN, -originElev);
-                const box = new THREE.Box3().setFromObject(currentSurface);
-                const center = box.getCenter(new THREE.Vector3());
-                const size = box.getSize(new THREE.Vector3()).length();
+        if (currentSurface) {
+            currentSurface.position.set(-originE, -originN, -originElev);
+            const box = new THREE.Box3().setFromObject(currentSurface);
+            const center = box.getCenter(new THREE.Vector3());
+            const size = box.getSize(new THREE.Vector3()).length();
 
-                controls.target.copy(center);
-                orientationGizmo.position.copy(center);
+            controls.target.copy(center);
+            orientationGizmo.position.copy(center);
 
-                camera.position.copy(center);
-                camera.position.x += size / 1.2;
-                camera.position.y += size / 5.0;
-                camera.position.z += size / 2.0;
+            camera.position.copy(center);
+            camera.position.x += size / 1.2;
+            camera.position.y += size / 5.0;
+            camera.position.z += size / 2.0;
 
-                originalSurfaceCenter.copy(center);
-                originalCameraPosition.copy(camera.position);
-                controls.update();
-            }
+            originalSurfaceCenter.copy(center);
+            originalCameraPosition.copy(camera.position);
+            controls.update();
         }
     }
 
@@ -843,17 +831,12 @@ function loadPoints(csvData, isReload = false, onFilterChange) {
     let contadorOutros = 0;
     let contadorNaoExec = 0;
 
-    rows.forEach(parts => {
-        if (parts.length < 4) return;
-
-        const pointID = parts[0];
-        const coords = extrairCoords(parts);
-        const rawE = coords.e;       // Easting
-        const rawElev = coords.elev; // Elevação
-        const rawN = coords.n;       // Northing
-        const desc = parts.length >= 7 ? "" : (parts[4] || ""); // descrição só no formato antigo
-
-        if (Number.isNaN(rawE) || Number.isNaN(rawElev) || Number.isNaN(rawN)) return;
+    pontos.forEach(ponto => {
+        const pointID = ponto.id;
+        const rawE = ponto.e;        // Easting
+        const rawElev = ponto.elev;  // Elevação
+        const rawN = ponto.n;        // Northing
+        const desc = ponto.desc;
 
         const match = pointID.match(/^([a-zA-Z]+)/);
         const prefix = match ? match[1] : 'outros';

@@ -552,6 +552,58 @@ body.modo-visualizacao .linha-cor { pointer-events: none; }
 .editar-acoes { display: flex; gap: 10px; }
 .editar-acoes button { flex: 1; padding: 10px; }
 
+/* --- Modal "Conferir colunas" (CSV do computador) --- */
+#colunas-modal {
+    position: fixed;
+    inset: 0;
+    z-index: 1001;
+    background: rgba(20, 30, 24, 0.45);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+}
+#colunas-modal.hidden { display: none; }
+.colunas-modal-inner {
+    background: #fff;
+    border-radius: 14px;
+    width: 720px;
+    max-width: 100%;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.3);
+}
+.colunas-x { border: none; background: transparent; color: #999; font-size: 15px; padding: 3px 8px; }
+.colunas-x:hover { background: #f0f2f1; color: #333; }
+.colunas-corpo { padding: 14px 18px 4px; overflow-y: auto; font-size: 13px; color: #444; }
+.colunas-arquivo { margin: 0 0 8px; line-height: 1.5; }
+.colunas-arquivo span { color: #777; font-size: 12px; }
+#colunas-avisos div { background: #fff7e6; border: 1px solid #f3d9a4; color: #8a5a00; border-radius: 8px; padding: 6px 10px; margin-bottom: 8px; font-size: 12.5px; }
+.colunas-dica { margin: 0 0 10px; color: #555; }
+.colunas-tabela-wrap { overflow-x: auto; border: 1px solid #e3e9e5; border-radius: 10px; }
+#colunas-tabela { border-collapse: collapse; width: 100%; font-size: 12px; white-space: nowrap; }
+#colunas-tabela th, #colunas-tabela td { padding: 5px 8px; border-bottom: 1px solid #eef2ef; text-align: left; }
+#colunas-tabela th { background: #f6f8f7; position: sticky; top: 0; }
+#colunas-tabela select { font: inherit; font-size: 12px; padding: 3px 4px; border-radius: 6px; border: 1px solid #cfd8d2; background: #fff; max-width: 150px; }
+#colunas-tabela .colunas-cab td { color: #888; font-style: italic; }
+#colunas-tabela .ignorada { color: #aaa; }
+#colunas-tabela .papel-nome { background: #eef4ff; }
+#colunas-tabela .papel-e { background: #eaf6ec; }
+#colunas-tabela .papel-n { background: #e6f3f6; }
+#colunas-tabela .papel-z { background: #fbf3e4; }
+#colunas-tabela .papel-desc { background: #f4f0f8; }
+#colunas-tabela th.papel-nome select, #colunas-tabela th.papel-e select, #colunas-tabela th.papel-n select,
+#colunas-tabela th.papel-z select, #colunas-tabela th.papel-desc select { border-color: var(--verde); font-weight: 600; }
+#colunas-status { margin: 10px 0 6px; font-weight: 600; font-size: 13px; }
+#colunas-status.ok { color: var(--verde-escuro); }
+#colunas-status.atencao { color: #a36a00; }
+#colunas-status.erro { color: var(--vermelho); }
+.colunas-ajuda { display: block; color: #888; line-height: 1.5; margin-bottom: 6px; }
+.colunas-ajuda a { color: var(--verde-escuro); }
+.colunas-acoes { padding: 12px 18px 16px; }
+#colunas-carregar:disabled { opacity: 0.5; cursor: default; }
+
 /* --- Modal "Como usar" --- */
 #ajuda-modal {
     position: fixed;

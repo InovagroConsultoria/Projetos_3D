@@ -6,6 +6,7 @@
 // =============================================================
 
 import { TALUDES, OBRAS } from './config.js';
+import { lerPontos, descreverFormato, modeloCsv, PAPEIS, ROTULO_PAPEL } from './pontos-csv.js';
 
 const params = new URLSearchParams(window.location.search);
 const csvFileURL = params.get('csv');
@@ -32,6 +33,9 @@ CATS.forEach(c => { CAT_COLOR[c.key] = c.color; CAT_LABEL[c.key] = c.label; });
 // --- Dados ---
 let originalRows = [];
 let delimiter = ',';
+let colNome = 0;         // coluna do nome do ponto no CSV (-1 = arquivo sem nomes)
+let linhaCabecalho = -1; // linha de cabeçalho do CSV (-1 = sem cabeçalho)
+let arquivoLocal = null; // nome do CSV aberto do computador (nomeia os arquivos exportados)
 let points = [];         // { rowIndex, id, cat, e, n, hPCA, h, elev, lineIndex, name, customName }
 let mE = 0, mN = 0;      // centro (média) de E/N — usado nas projeções
 let projUX = 1, projUY = 0; // eixo principal (PCA) — reutilizado para projetar as áreas
@@ -159,8 +163,10 @@ function mostrarTelaAbrirLocal() {
     ls.innerHTML = `<div style="font-size:42px;margin-bottom:14px;">📂</div>
         <div id="loading-text">Nenhum projeto especificado.<br><small style="color:#777">Selecione um talude no menu ou abra um CSV do seu computador.</small></div>
         <button class="error-button" id="btn-abrir-local" style="border:none;cursor:pointer;font-family:inherit;">📂 Carregar CSV do computador</button>
-        <a class="error-button" style="background:#6c757d" href="index.html">Voltar ao menu</a>`;
+        <a class="error-button" style="background:#6c757d" href="index.html">Voltar ao menu</a>
+        <small style="color:#777;max-width:420px;text-align:center;margin-top:14px;line-height:1.5">Aceita CSV ou TXT com nome, Este, Norte e Cota em qualquer ordem, separados por vírgula, ponto e vírgula, TAB ou espaços, com ou sem cabeçalho. Coordenadas em UTM (metros).<br><a href="#" id="btn-modelo-local" style="color:var(--verde-escuro)">Baixar planilha-modelo</a></small>`;
     document.getElementById('btn-abrir-local').addEventListener('click', () => document.getElementById('csv-local').click());
+    document.getElementById('btn-modelo-local').addEventListener('click', baixarModeloCsv);
 }
 
 // Reinicia todo o estado para carregar um novo conjunto de pontos.
@@ -178,22 +184,101 @@ function resetarEstado() {
     fecharCards(); fecharInfoPonto();
 }
 
-// Abre um CSV do computador (sem passar pelo GitHub) — edição local.
+// Abre um CSV do computador (sem passar pelo GitHub) — edição local. Antes de
+// carregar, mostra como as colunas foram entendidas para o usuário conferir.
 function carregarCsvLocal(file) {
-    const reader = new FileReader();
-    reader.onload = () => {
-        resetarEstado();
-        abrirEmEdicao = true; // CSV do computador é para editar: já abre no modo edição
-        nomeTalude = file.name.replace(/\.(csv|txt)$/i, '') + ' (local)';
-        STORAGE_KEY = 'editor-linhas:local:' + file.name;
-        PDF_KEY = STORAGE_KEY + ':pdf';
-        const ls = document.getElementById('loading-screen');
-        ls.style.display = 'flex'; ls.classList.remove('hidden');
-        try { iniciar(String(reader.result)); }
-        catch (e) { console.error(e); showError('Não foi possível ler este CSV.', file.name); }
-    };
-    reader.onerror = () => showError('Não foi possível ler o arquivo.', file.name);
-    reader.readAsText(file);
+    lerArquivoTexto(file)
+        .then(texto => abrirConferenciaColunas(file, texto))
+        .catch(err => { console.error(err); showError('Não foi possível ler o arquivo.', file.name); });
+}
+// Texto do arquivo em UTF-8; se não for (CSV salvo pelo Excel como "ANSI"),
+// lê como Windows-1252 para não estragar acentos dos nomes e do cabeçalho.
+async function lerArquivoTexto(file) {
+    const buf = await file.arrayBuffer();
+    try { return new TextDecoder('utf-8', { fatal: true }).decode(buf); }
+    catch (e) { return new TextDecoder('windows-1252').decode(buf); }
+}
+function iniciarCsvLocal(file, texto, colunas) {
+    resetarEstado();
+    abrirEmEdicao = true; // CSV do computador é para editar: já abre no modo edição
+    arquivoLocal = file.name;
+    // O 3D só abre arquivos do GitHub: o link mostraria o talude da URL, não estes pontos.
+    const link3d = document.getElementById('link-3d'); if (link3d) link3d.style.display = 'none';
+    nomeTalude = file.name.replace(/\.(csv|txt)$/i, '') + ' (local)';
+    STORAGE_KEY = 'editor-linhas:local:' + file.name;
+    PDF_KEY = STORAGE_KEY + ':pdf';
+    const ls = document.getElementById('loading-screen');
+    ls.style.display = 'flex'; ls.classList.remove('hidden');
+    try { iniciar(texto, colunas); }
+    catch (e) { console.error(e); showError('Não foi possível ler este CSV.', file.name); }
+}
+
+// --- Conferência das colunas (CSV do computador) ---
+let csvPendente = null; // { file, texto, leitura, cols }
+function abrirConferenciaColunas(file, texto) {
+    const leitura = lerPontos(texto);
+    csvPendente = { file, texto, leitura, cols: { ...leitura.cols } };
+    document.getElementById('colunas-arquivo').textContent = file.name;
+    document.getElementById('colunas-formato').textContent = leitura.linhas.length ? descreverFormato(leitura) : '';
+    const avisos = document.getElementById('colunas-avisos');
+    avisos.innerHTML = leitura.avisos.map(a => `<div>⚠️ ${escapeHtml(a)}</div>`).join('');
+    montarTabelaColunas();
+    document.getElementById('colunas-modal').classList.remove('hidden');
+}
+function fecharConferenciaColunas() {
+    document.getElementById('colunas-modal').classList.add('hidden');
+    csvPendente = null;
+}
+function montarTabelaColunas() {
+    const { leitura, cols } = csvPendente;
+    const tab = document.getElementById('colunas-tabela');
+    const ini = leitura.inicio >= 0 ? leitura.inicio : 0;
+    const previa = leitura.linhas.slice(ini, ini + 6);
+    const cab = leitura.cabecalho >= 0 ? leitura.linhas[leitura.cabecalho] : null;
+    const ncols = Math.max(0, ...previa.map(r => r.length), cab ? cab.length : 0);
+    const papelDe = (j) => PAPEIS.find(p => cols[p] === j) || '';
+    const opcoes = (j) => ['', ...PAPEIS].map(p =>
+        `<option value="${p}" ${papelDe(j) === p ? 'selected' : ''}>${p ? ROTULO_PAPEL[p] : '— ignorar —'}</option>`).join('');
+    const celulas = (r) => Array.from({ length: ncols }, (_, j) =>
+        `<td class="${papelDe(j) ? 'papel-' + papelDe(j) : 'ignorada'}">${escapeHtml(r[j] ?? '')}</td>`).join('');
+    let html = '<thead><tr>' + Array.from({ length: ncols }, (_, j) =>
+        `<th class="${papelDe(j) ? 'papel-' + papelDe(j) : 'ignorada'}"><select data-j="${j}">${opcoes(j)}</select></th>`).join('') + '</tr>';
+    if (cab) html += '<tr class="colunas-cab">' + celulas(cab) + '</tr>';
+    html += '</thead><tbody>' + previa.map(r => '<tr>' + celulas(r) + '</tr>').join('') + '</tbody>';
+    tab.innerHTML = html;
+    tab.querySelectorAll('select').forEach(sel => sel.addEventListener('change', () => {
+        const j = +sel.dataset.j, papel = sel.value;
+        PAPEIS.forEach(p => { if (cols[p] === j) cols[p] = -1; }); // a coluna deixa o papel antigo
+        if (papel) cols[papel] = j;                                // e o papel deixa a coluna antiga
+        montarTabelaColunas();
+    }));
+    atualizarStatusColunas();
+}
+function atualizarStatusColunas() {
+    const { texto, cols } = csvPendente;
+    const st = document.getElementById('colunas-status');
+    const btn = document.getElementById('colunas-carregar');
+    const faltam = ['e', 'n', 'z'].filter(p => cols[p] < 0).map(p => ROTULO_PAPEL[p]);
+    if (faltam.length) {
+        st.className = 'erro'; st.textContent = 'Indique a coluna de: ' + faltam.join(', ') + '.';
+        btn.disabled = true; return;
+    }
+    const r = lerPontos(texto, cols);
+    if (!r.pontos.length) {
+        st.className = 'erro'; st.textContent = 'Nenhum ponto com coordenadas válidas nessas colunas.';
+        btn.disabled = true; return;
+    }
+    const p = r.pontos[0];
+    const trocadas = Math.abs(p.e) >= 1e6 && Math.abs(p.n) < 1e6;
+    st.className = trocadas ? 'atencao' : 'ok';
+    st.textContent = trocadas
+        ? `⚠️ ${r.pontos.length} pontos — confira: a coluna marcada como Este tem valores de Norte (7 dígitos).`
+        : `✓ ${r.pontos.length} pontos serão carregados${cols.nome < 0 ? ' (sem coluna de nome)' : ''}.`;
+    btn.disabled = false;
+}
+function baixarModeloCsv(ev) {
+    if (ev) ev.preventDefault();
+    baixar(new Blob([modeloCsv()], { type: 'text/csv;charset=utf-8' }), 'modelo_pontos.csv');
 }
 
 function showError(msg, detalhe) {
@@ -235,10 +320,6 @@ function chaveLinha(p) {
     // como "POINT 1" não são linhas → ficam como "sem nome".
     const m = u.match(/^([A-Z]{1,2})\s*-?\s*\d/);
     return m ? m[1] : null;
-}
-function extrairCoords(parts) {
-    if (parts.length >= 7) return { e: parseFloat(parts[4]), n: parseFloat(parts[5]), elev: parseFloat(parts[6]) };
-    return { e: parseFloat(parts[1]), elev: parseFloat(parts[2]), n: parseFloat(parts[3]) };
 }
 
 // =============================================================
@@ -321,21 +402,19 @@ function exportarVista() {
     alert('Vista exportada!\n\nO trecho foi copiado e baixado (vista_' + base + '.txt).\nEnvie ao administrador para colar no config.js:\n\n' + snippet);
 }
 
-function iniciar(csvText) {
-    const linhasTxt = csvText.split(/\r?\n/).map(l => l.replace(/\s+$/, '')).filter(l => l.trim() !== '');
-    if (linhasTxt.length === 0) { showError('CSV vazio ou inválido.'); return; }
-    delimiter = linhasTxt[0].includes('\t') ? '\t' : ',';
-    originalRows = linhasTxt.map(l => l.split(delimiter).map(c => c.trim()));
+// `colunas` vem da tela de conferência (CSV do computador); sem ela, o formato
+// é reconhecido sozinho (separador, decimal, cabeçalho e ordem das colunas).
+function iniciar(csvText, colunas = null) {
+    const leitura = lerPontos(csvText, colunas);
+    if (leitura.linhas.length === 0) { showError('CSV vazio ou inválido.'); return; }
+    originalRows = leitura.linhas;
+    delimiter = leitura.sep;
+    colNome = leitura.cols.nome;
+    linhaCabecalho = leitura.cabecalho;
+    leitura.avisos.forEach(a => console.warn('CSV:', a));
 
-    const brutos = [];
-    originalRows.forEach((parts, rowIndex) => {
-        if (parts.length < 4) return;
-        const id = parts[0];
-        const c = extrairCoords(parts);
-        if (Number.isNaN(c.e) || Number.isNaN(c.n) || Number.isNaN(c.elev)) return;
-        brutos.push({ rowIndex, id, cat: categoriaDe(id), e: c.e, n: c.n, elev: c.elev });
-    });
-    if (brutos.length === 0) { showError('Nenhum ponto válido neste CSV.'); return; }
+    const brutos = leitura.pontos.map(p => ({ rowIndex: p.rowIndex, id: p.id, cat: categoriaDe(p.id), e: p.e, n: p.n, elev: p.elev }));
+    if (brutos.length === 0) { showError('Nenhum ponto válido neste CSV.', leitura.avisos.join(' ')); return; }
 
     // Eixo horizontal principal (PCA sobre E,N).
     mE = 0; mN = 0; brutos.forEach(p => { mE += p.e; mN += p.n; }); mE /= brutos.length; mN /= brutos.length;
@@ -1306,12 +1385,23 @@ function exportar() {
     const novoNome = {};
     lines.forEach(line => line.points.forEach(p => { novoNome[p.rowIndex] = p.name; }));
     const del = new Set(points.filter(p => p.deleted).map(p => p.rowIndex));
+    // Devolve o arquivo no mesmo formato em que veio: só troca o nome, na coluna
+    // em que ele está. Arquivo sem coluna de nome ganha uma no início.
     const out = originalRows
-        .map((parts, idx) => del.has(idx) ? null : (() => { const c = parts.slice(); if (novoNome[idx] != null) c[0] = novoNome[idx]; return c.join(delimiter); })())
+        .map((parts, idx) => {
+            if (del.has(idx)) return null;
+            const c = parts.slice();
+            if (colNome >= 0) { if (novoNome[idx] != null) c[colNome] = novoNome[idx]; }
+            else c.unshift(idx === linhaCabecalho ? 'Ponto' : (novoNome[idx] ?? ''));
+            return c.join(delimiter);
+        })
         .filter(l => l !== null);
-    baixar(new Blob([out.join('\r\n')], { type: 'text/csv;charset=utf-8' }), baseNome() + '_renomeado.csv');
+    // Com acentos, vai com o marcador UTF-8 para o Excel em português abrir certo.
+    const conteudo = out.join('\r\n');
+    const bom = /[^\x00-\x7f]/.test(conteudo) ? '﻿' : '';
+    baixar(new Blob([bom + conteudo], { type: 'text/csv;charset=utf-8' }), baseNome() + '_renomeado.csv');
 }
-function baseNome() { return (csvFileURL.split('/').pop() || 'pontos.csv').replace(/\.csv$/i, ''); }
+function baseNome() { return (arquivoLocal || (csvFileURL || '').split('/').pop() || 'pontos.csv').replace(/\.(csv|txt)$/i, ''); }
 function baixar(blob, nome) {
     const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = nome;
     document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(a.href);
@@ -1832,6 +1922,11 @@ window.addEventListener('keydown', (e) => {
         }
         return;
     }
+    // Conferência de colunas aberta: não deixa atalhos do editor agirem por trás.
+    if (!document.getElementById('colunas-modal').classList.contains('hidden')) {
+        if (e.key === 'Escape') fecharConferenciaColunas();
+        return;
+    }
     const ajudaModal = document.getElementById('ajuda-modal');
     if (e.key === 'Escape' && !ajudaModal.classList.contains('hidden')) { ajudaModal.classList.add('hidden'); return; }
     const edModal = document.getElementById('editar-modal');
@@ -1911,6 +2006,15 @@ document.getElementById('mini-card-cancel').addEventListener('click', fecharMini
 const ajudaModal = document.getElementById('ajuda-modal');
 document.getElementById('btn-ajuda').addEventListener('click', () => ajudaModal.classList.remove('hidden'));
 document.getElementById('ajuda-fechar').addEventListener('click', () => ajudaModal.classList.add('hidden'));
+document.getElementById('colunas-fechar').addEventListener('click', fecharConferenciaColunas);
+document.getElementById('colunas-cancelar').addEventListener('click', fecharConferenciaColunas);
+document.getElementById('colunas-modelo').addEventListener('click', baixarModeloCsv);
+document.getElementById('colunas-carregar').addEventListener('click', () => {
+    if (!csvPendente) return;
+    const { file, texto, cols } = csvPendente;
+    fecharConferenciaColunas();
+    iniciarCsvLocal(file, texto, cols);
+});
 ajudaModal.addEventListener('click', (e) => { if (e.target === ajudaModal) ajudaModal.classList.add('hidden'); });
 document.getElementById('btn-nova-linha').addEventListener('click', novaLinha);
 document.getElementById('input-letra').addEventListener('keydown', (e) => { if (e.key === 'Enter') novaLinha(); });
