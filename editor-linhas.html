@@ -30,7 +30,9 @@
 
     <!-- Barra de ferramentas (ícones) -->
     <div id="toolbar">
+        <button class="tool-btn" data-card="card-busca" title="Pesquisar ponto (Ctrl+F)">🔍</button>
         <button class="tool-btn so-edicao" data-card="card-linhas" title="Linhas">📏</button>
+        <button class="tool-btn so-edicao" data-card="card-pontos" title="Adicionar pontos">➕</button>
         <button class="tool-btn" data-card="card-exibicao" title="Exibição">👁️</button>
         <button class="tool-btn so-edicao" data-card="card-categorias" title="Categorias visíveis">🏷️</button>
         <button class="tool-btn so-edicao" data-card="card-ferramentas" title="Ferramentas">🛠️</button>
@@ -57,6 +59,39 @@
             <button id="btn-detectar" class="largo">⚡ Linhas pré-definidas (CSV)</button>
             <button id="btn-desfazer" class="largo">↶ Desfazer <kbd>Ctrl+Z</kbd></button>
             <div id="aviso-sem-nome" class="aviso hidden"></div>
+        </div>
+    </div>
+
+    <div id="card-busca" class="tool-card hidden">
+        <div class="tool-card-cab"><span>Pesquisar ponto</span><button class="tool-card-x" title="Fechar">✕</button></div>
+        <div class="bloco">
+            <input type="search" id="busca-input" class="campo" data-foco placeholder="Nome atual ou do arquivo (ex.: A12)" autocomplete="off" spellcheck="false">
+            <div id="busca-resultados"></div>
+        </div>
+    </div>
+
+    <div id="card-pontos" class="tool-card hidden so-edicao">
+        <div class="tool-card-cab"><span>Adicionar pontos</span><button class="tool-card-x" title="Fechar">✕</button></div>
+        <div class="bloco">
+            <label for="np-nome">Nome do ponto</label>
+            <input type="text" id="np-nome" class="campo" data-foco placeholder="ex.: A61" autocomplete="off" spellcheck="false">
+            <div class="np-coords">
+                <label for="np-e">Este (E)</label><input type="text" id="np-e" class="campo" inputmode="decimal" placeholder="231611,855" autocomplete="off">
+                <label for="np-n">Norte (N)</label><input type="text" id="np-n" class="campo" inputmode="decimal" placeholder="6716233,286" autocomplete="off">
+                <label for="np-z">Cota</label><input type="text" id="np-z" class="campo" inputmode="decimal" placeholder="309,203" autocomplete="off">
+            </div>
+            <button id="btn-np-adicionar" class="primario largo-centro">➕ Adicionar ponto</button>
+            <div id="np-msg" class="np-msg"></div>
+        </div>
+        <div class="bloco">
+            <label for="np-colar">Ou cole várias linhas (nome, E, N e cota, em qualquer ordem ou formato)</label>
+            <textarea id="np-colar" class="campo" rows="3" placeholder="A61;231611,855;6716233,286;309,203&#10;A62;231614,355;6716234,086;309,250" spellcheck="false"></textarea>
+            <button id="btn-np-colar" class="largo-centro">📋 Adicionar linhas coladas</button>
+        </div>
+        <div class="bloco">
+            <label>Pontos adicionados (<span id="np-qtd">0</span>)</label>
+            <div id="np-lista"></div>
+            <small class="pdf-dica">Ficam salvos neste navegador e saem no "Exportar CSV". Para aparecerem para todos (e no 3D), envie o CSV exportado para o GitHub.</small>
         </div>
     </div>
 
@@ -155,6 +190,8 @@
                 <li><b>Cor da linha:</b> clique na <b>bolinha colorida</b> do card para abrir o seletor RGB.</li>
                 <li><b>Remover da linha:</b> caixa/contorno sobre pontos <b>da linha atual</b> remove-os dela (se a seleção tiver pontos livres, eles são adicionados).</li>
                 <li><b>Inverter vista:</b> espelha o talude na horizontal (útil quando ele aparece de trás).</li>
+                <li><b>Pesquisar ponto (🔍 ou Ctrl+F):</b> procura pelo nome atual e pelo nome original do arquivo. Com mais de um resultado, aparece a lista; clique num deles (ou Enter no primeiro) para centralizar o ponto no desenho.</li>
+                <li><b>Adicionar pontos (➕):</b> digite nome, Este, Norte e Cota, ou cole várias linhas de uma planilha. O ponto com nome de uma linha existente (ex.: A61) entra nela. Ficam salvos neste navegador, saem no "Exportar CSV" e podem ser removidos na lista do card (Ctrl+Z também desfaz).</li>
                 <li><b>Abrir CSV do computador (📂):</b> aceita CSV ou TXT com nome, Este, Norte e Cota em qualquer ordem, separados por vírgula, ponto e vírgula, TAB ou espaços, com ou sem cabeçalho (inclusive o CSV salvo pelo Excel). Antes de carregar, confira as colunas reconhecidas e corrija se preciso. Coordenadas em UTM (metros).</li>
                 <li><b>Contorno livre:</b> clique e <b>arraste</b> contornando os pontos; ao soltar, seleciona o que estiver dentro.</li>
                 <li><b>Caixa:</b> <b>clique</b> num ponto vazio (1º canto), mova e <b>clique de novo</b> (canto oposto) para fechar.</li>
