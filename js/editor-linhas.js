@@ -6,7 +6,7 @@
 // =============================================================
 
 import { TALUDES, OBRAS } from './config.js';
-import { lerPontos, descreverFormato, modeloCsv, PAPEIS, ROTULO_PAPEL } from './pontos-csv.js';
+import { lerPontos, descreverFormato, modeloCsv, numero, PAPEIS, ROTULO_PAPEL } from './pontos-csv.js';
 
 const params = new URLSearchParams(window.location.search);
 const csvFileURL = params.get('csv');
@@ -36,7 +36,11 @@ let delimiter = ',';
 let colNome = 0;         // coluna do nome do ponto no CSV (-1 = arquivo sem nomes)
 let linhaCabecalho = -1; // linha de cabeçalho do CSV (-1 = sem cabeçalho)
 let arquivoLocal = null; // nome do CSV aberto do computador (nomeia os arquivos exportados)
-let points = [];         // { rowIndex, id, cat, e, n, hPCA, h, elev, lineIndex, name, customName }
+let colunasCsv = { nome: 0, e: 1, z: 2, n: 3, desc: -1 }; // colunas do arquivo (para escrever pontos novos)
+let decimalVirgulaCsv = false; // o arquivo usa decimal com vírgula?
+let larguraLinhaCsv = 4;  // nº de campos de uma linha de dados (pontos novos saem iguais)
+let nLinhasCsv = 0;       // linhas vindas do arquivo; os pontos adicionados vêm depois delas
+let points = [];         // { rowIndex, id, cat, e, n, hPCA, h, elev, lineIndex, name, customName, novo? }
 let mE = 0, mN = 0;      // centro (média) de E/N — usado nas projeções
 let projUX = 1, projUY = 0; // eixo principal (PCA) — reutilizado para projetar as áreas
 
@@ -93,6 +97,8 @@ function pararPiscar() {
 
 // --- Cards de interação (abertos pelos ícones da toolbar) ---
 function fecharCards() {
+    // tira o foco de um campo do card que vai sumir (senão as teclas continuam indo para ele)
+    if (document.activeElement && document.activeElement.closest && document.activeElement.closest('.tool-card')) document.activeElement.blur();
     document.querySelectorAll('.tool-card').forEach(c => c.classList.add('hidden'));
     document.querySelectorAll('#toolbar .tool-btn[data-card]').forEach(b => b.classList.remove('ativo'));
 }
@@ -173,6 +179,8 @@ function mostrarTelaAbrirLocal() {
 function resetarEstado() {
     points = []; lines = []; dividers = []; guide = []; areas = [];
     undoStack.length = 0;
+    destaque = null; ultimosAchados = [];
+    const bi = document.getElementById('busca-input'); if (bi) { bi.value = ''; document.getElementById('busca-resultados').innerHTML = ''; }
     currentLineIndex = -1; autoDetectou = false;
     flipH = false; topView = false; modoExcluir = false;
     medindo = false; medA = null; medB = null;
@@ -411,6 +419,13 @@ function iniciar(csvText, colunas = null) {
     delimiter = leitura.sep;
     colNome = leitura.cols.nome;
     linhaCabecalho = leitura.cabecalho;
+    colunasCsv = { ...leitura.cols };
+    decimalVirgulaCsv = leitura.decimalVirgula;
+    nLinhasCsv = originalRows.length;
+    // Largura mais comum das linhas de dados (ex.: "A1,E,Cota,N," tem 5 campos).
+    const larguras = {};
+    leitura.pontos.forEach(p => { const k = originalRows[p.rowIndex].length; larguras[k] = (larguras[k] || 0) + 1; });
+    larguraLinhaCsv = +(Object.entries(larguras).sort((a, b) => b[1] - a[1])[0] || [4])[0];
     leitura.avisos.forEach(a => console.warn('CSV:', a));
 
     const brutos = leitura.pontos.map(p => ({ rowIndex: p.rowIndex, id: p.id, cat: categoriaDe(p.id), e: p.e, n: p.n, elev: p.elev }));
@@ -446,7 +461,7 @@ function iniciar(csvText, colunas = null) {
     if (autoDetectou) inferirDivisorias(); // divisórias visíveis já no 1º carregamento (numeração do CSV)
     resizeCanvas();
     fitView();
-    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarExcluidos(); atualizarStatus(); draw();
+    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarExcluidos(); atualizarListaNovos(); atualizarStatus(); draw();
 
     const ls = document.getElementById('loading-screen');
     ls.classList.add('hidden'); setTimeout(() => { ls.style.display = 'none'; }, 400);
@@ -836,22 +851,41 @@ function draw() {
         ctx.fillStyle = 'rgba(0,0,0,0.8)'; ctx.fillRect(s.x + 10, s.y - 22, w + 10, 16);
         ctx.fillStyle = '#fff'; ctx.fillText(rotulo, s.x + 15, s.y - 10);
     }
+
+    // Ponto encontrado na pesquisa (fora do desenho do PDF)
+    if (destaque && !rotularTodos && catVisivel(destaque.p)) {
+        const s = toScreen(destaque.p);
+        ctx.beginPath(); ctx.arc(s.x, s.y, 20, 0, Math.PI * 2); ctx.strokeStyle = 'rgba(255,140,0,0.35)'; ctx.lineWidth = 6; ctx.stroke();
+        ctx.beginPath(); ctx.arc(s.x, s.y, 12, 0, Math.PI * 2); ctx.strokeStyle = '#ff8c00'; ctx.lineWidth = 3; ctx.stroke();
+        if (destaque.p !== hoveredPoint) {
+            const rotulo = destaque.p.name || destaque.p.id || '(sem nome)';
+            ctx.font = 'bold 12px sans-serif';
+            const w = ctx.measureText(rotulo).width;
+            ctx.fillStyle = 'rgba(255,140,0,0.95)'; ctx.fillRect(s.x + 16, s.y - 28, w + 10, 17);
+            ctx.fillStyle = '#fff'; ctx.fillText(rotulo, s.x + 21, s.y - 15);
+        }
+    }
 }
 
 // =============================================================
 //  Desfazer
 // =============================================================
 function snapshot() {
-    return JSON.stringify({ cur: currentLineIndex, dividers, guide, del: points.filter(p => p.deleted).map(p => p.rowIndex), lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) });
+    return JSON.stringify({ cur: currentLineIndex, dividers, guide, novos: novosSerializados(), del: points.filter(p => p.deleted).map(p => p.rowIndex), lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) });
 }
 function pushUndo() { undoStack.push(snapshot()); if (undoStack.length > UNDO_MAX) undoStack.shift(); }
 function desfazer() {
     if (undoStack.length === 0) return;
-    const d = JSON.parse(undoStack.pop());
-    const delSet = new Set(d.del || []);
-    points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; p.deleted = delSet.has(p.rowIndex); });
+    aplicarEstado(JSON.parse(undoStack.pop()));
+}
+// Reaplica um estado salvo por snapshot() (desfazer e remoção de ponto adicionado).
+function aplicarEstado(d) {
     dividers = normalizarDivisorias(d.dividers);
     guide = Array.isArray(d.guide) ? d.guide : [];
+    if (Array.isArray(d.novos)) sincronizarNovos(d.novos);
+    if (destaque && !points.includes(destaque.p)) destaque = null;
+    const delSet = new Set(d.del || []);
+    points.forEach(p => { p.lineIndex = null; p.name = null; p.customName = null; p.deleted = delSet.has(p.rowIndex); });
     points.forEach(p => { p.h = guide.length >= 2 ? chainage(p.e, p.n) : p.hPCA; });
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
     lines = d.lines.map((l, li) => {
@@ -859,7 +893,7 @@ function desfazer() {
         const line = { letra: l.letra, color: l.color, inverted: l.inverted, points: pts }; renumerar(line); return line;
     });
     currentLineIndex = (d.cur != null && d.cur < lines.length) ? d.cur : -1;
-    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarExcluidos(); atualizarStatus(); salvarAutosave(); draw();
+    atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarExcluidos(); atualizarListaNovos(); atualizarStatus(); salvarAutosave(); draw();
 }
 
 // =============================================================
@@ -1136,7 +1170,213 @@ function editarPonto(p) {
         pushUndo(); p.customName = (novo || '').trim() || null; renumerar(lines[p.lineIndex]); posMudanca();
     });
 }
-function posMudanca() { atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarExcluidos(); atualizarStatus(); salvarAutosave(); draw(); }
+function posMudanca() { atualizarPainelLinhas(); atualizarPainelDivisorias(); atualizarPainelGuia(); atualizarExcluidos(); atualizarListaNovos(); atualizarStatus(); salvarAutosave(); draw(); }
+
+// =============================================================
+//  Pontos adicionados no editor (sem mexer no arquivo de origem)
+// =============================================================
+// Entram como linhas novas no fim do arquivo, já no formato dele (separador,
+// decimal e ordem das colunas). Assim valem para linhas, autosave, desfazer e
+// "Exportar CSV" exatamente como um ponto que veio do arquivo.
+function formatarNumero(v) {
+    const s = String(+(+v).toFixed(4));
+    return decimalVirgulaCsv ? s.replace('.', ',') : s;
+}
+function linhaNoFormato(id, e, n, elev) {
+    const c = Array(Math.max(larguraLinhaCsv, 1)).fill('');
+    const por = (j, v) => { if (j >= 0) { while (c.length <= j) c.push(''); c[j] = v; } };
+    por(colunasCsv.nome, id); por(colunasCsv.e, formatarNumero(e)); por(colunasCsv.n, formatarNumero(n)); por(colunasCsv.z, formatarNumero(elev));
+    return c;
+}
+function criarPonto(o) {
+    const id = String(o.id || '').trim();
+    const hPCA = (o.e - mE) * projUX + (o.n - mN) * projUY; // mesma projeção do arquivo (o eixo não muda)
+    const p = {
+        rowIndex: originalRows.length, id, cat: categoriaDe(id), e: o.e, n: o.n,
+        hPCA, h: guide.length >= 2 ? chainage(o.e, o.n) : hPCA, elev: o.elev,
+        lineIndex: null, name: null, customName: null, novo: true,
+    };
+    originalRows.push(linhaNoFormato(id, o.e, o.n, o.elev));
+    points.push(p);
+    return p;
+}
+function novosSerializados() { return points.filter(p => p.novo).map(p => ({ id: p.id, e: p.e, n: p.n, elev: p.elev })); }
+// Recria os pontos adicionados a partir de uma lista (autosave e desfazer).
+function sincronizarNovos(lista) {
+    points = points.filter(p => !p.novo);
+    originalRows.length = nLinhasCsv;
+    lista.forEach(o => { if ([o.e, o.n, o.elev].every(Number.isFinite)) criarPonto(o); });
+}
+// O arquivo já tem um ponto nesta posição (ex.: o ponto foi incluído no CSV depois)?
+function jaNoArquivo(o) {
+    return points.some(p => !p.novo && Math.abs(p.e - o.e) < 0.001 && Math.abs(p.n - o.n) < 0.001 && Math.abs(p.elev - o.elev) < 0.001);
+}
+// Adiciona pontos já conferidos. Quem tem nome de uma linha existente entra nela.
+function adicionarPontos(lista) {
+    pushUndo();
+    const criados = lista.map(criarPonto);
+    const mexidas = new Set();
+    criados.forEach(p => {
+        enabledCats.add(p.cat);
+        const k = chaveLinha(p);
+        const li = k ? lines.findIndex(l => l.letra === k) : -1;
+        if (li >= 0) { lines[li].points.push(p); p.lineIndex = li; mexidas.add(li); }
+    });
+    mexidas.forEach(li => reordenarENumerar(lines[li]));
+    montarFiltroCategorias(); atualizarAvisoSemNome(); posMudanca();
+    return criados;
+}
+function removerPontoNovo(p) {
+    if (!p || !p.novo) return;
+    pushUndo(); // Ctrl+Z traz o ponto de volta
+    const estado = JSON.parse(snapshot());
+    const r = p.rowIndex;
+    estado.novos.splice(points.filter(q => q.novo).indexOf(p), 1);
+    // os pontos adicionados depois dele sobem uma linha no arquivo
+    const ajustar = (x) => (x > r ? x - 1 : x);
+    estado.del = estado.del.filter(x => x !== r).map(ajustar);
+    estado.lines.forEach(l => { l.pts = l.pts.filter(o => o.r !== r).map(o => ({ ...o, r: ajustar(o.r) })); });
+    aplicarEstado(estado);
+    montarFiltroCategorias();
+}
+// Pede confirmação para o que costuma ser erro de digitação. false = cancelar.
+function conferirNovos(lista) {
+    const ativosAgora = points.filter(p => !p.deleted);
+    const distancia = (o) => ativosAgora.reduce((m, p) => Math.min(m, Math.hypot(p.e - o.e, p.n - o.n)), Infinity);
+    const longe = lista.filter(o => distancia(o) > 300);
+    if (longe.length && !confirm(`${longe.length === 1 ? `O ponto ${longe[0].id || ''} fica` : `${longe.length} pontos ficam`} a mais de 300 m do talude. Pode ser erro de digitação nas coordenadas.\n\nAdicionar mesmo assim?`)) return false;
+    const nomes = new Set(ativosAgora.flatMap(p => [p.id, p.name]).filter(Boolean).map(normBusca));
+    const repetidos = lista.filter(o => o.id && nomes.has(normBusca(o.id)));
+    if (repetidos.length && !confirm(`Já existe ponto com o nome ${repetidos.slice(0, 5).map(o => o.id).join(', ')}${repetidos.length > 5 ? '…' : ''}.\n\nAdicionar mesmo assim?`)) return false;
+    return true;
+}
+function avisoNovos(texto, tipo) {
+    const m = document.getElementById('np-msg');
+    m.className = 'np-msg ' + (tipo || 'erro'); m.textContent = texto;
+}
+// "A61" -> "A62", "GFA-09" -> "GFA-10": deixa pronto o nome do próximo ponto.
+function proximoNome(nome) {
+    const m = nome.match(/^(.*?)(\d+)$/);
+    return m ? m[1] + String(+m[2] + 1).padStart(m[2].length, '0') : nome;
+}
+function adicionarPontoDoFormulario() {
+    const campo = (id) => document.getElementById(id);
+    const nome = campo('np-nome').value.trim();
+    // aceita decimal com ponto ou vírgula ("309.203" / "309,203")
+    const e = numero(campo('np-e').value, false), n = numero(campo('np-n').value, false), z = numero(campo('np-z').value, false);
+    if (!nome) { avisoNovos('Informe o nome do ponto.'); campo('np-nome').focus(); return; }
+    if (![e, n, z].every(Number.isFinite)) { avisoNovos('Preencha Este, Norte e Cota com números (ex.: 231611,855).'); return; }
+    if (Math.abs(e) >= 1e6 && Math.abs(n) < 1e6) { avisoNovos('Este e Norte parecem trocados: o Norte é o que tem 7 dígitos.'); return; }
+    const o = { id: nome, e, n, elev: z };
+    if (!conferirNovos([o])) return;
+    const [p] = adicionarPontos([o]);
+    // Na linha, o nome segue a posição (como os demais); avisa quando ficou diferente do digitado.
+    avisoNovos(p.lineIndex == null
+        ? `✓ ${p.id} adicionado (sem linha).`
+        : `✓ ${p.id} adicionado na linha ${lines[p.lineIndex].letra}${p.name && p.name !== p.id ? ` — pela posição, ficou ${p.name}` : ''}.`, 'ok');
+    campo('np-nome').value = proximoNome(nome);
+    ['np-e', 'np-n', 'np-z'].forEach(id => { campo(id).value = ''; });
+    campo('np-e').focus();
+    irParaPonto(p);
+}
+function adicionarPontosColados() {
+    const area = document.getElementById('np-colar');
+    if (!area.value.trim()) { avisoNovos('Cole uma ou mais linhas com nome, Este, Norte e Cota.'); return; }
+    const r = lerPontos(area.value);
+    if (!r.pontos.length) { avisoNovos('Não encontrei coordenadas nas linhas coladas.'); return; }
+    if (r.origem === 'incerto') { avisoNovos('Não reconheci as colunas. Cole todas as linhas num formato só (ex.: Nome; Este; Norte; Cota), com coordenadas UTM.'); return; }
+    const lista = r.pontos.map(p => ({ id: p.id, e: p.e, n: p.n, elev: p.elev }));
+    if (!conferirNovos(lista)) return;
+    const criados = adicionarPontos(lista);
+    const emLinha = criados.filter(p => p.lineIndex != null).length;
+    avisoNovos(`✓ ${criados.length} ponto${criados.length > 1 ? 's' : ''} adicionado${criados.length > 1 ? 's' : ''}${emLinha ? ` (${emLinha} em linhas existentes)` : ''}.`, 'ok');
+    area.value = '';
+    if (criados.length === 1) irParaPonto(criados[0]);
+}
+function atualizarListaNovos() {
+    const cont = document.getElementById('np-lista'); if (!cont) return;
+    const novos = points.filter(p => p.novo);
+    document.getElementById('np-qtd').textContent = novos.length;
+    if (!novos.length) { cont.innerHTML = '<small>Nenhum ponto adicionado ainda.</small>'; return; }
+    cont.innerHTML = '';
+    novos.forEach(p => {
+        const row = document.createElement('div');
+        row.className = 'np-item' + (p.deleted ? ' excluido' : '');
+        const cor = p.lineIndex != null ? lines[p.lineIndex].color : CAT_COLOR[p.cat];
+        row.innerHTML = `<span class="cat-bola" style="background:${cor}"></span>`
+            + `<span class="np-nome" title="Mostrar no desenho">${escapeHtml(p.name || p.id || '(sem nome)')}`
+            + `${p.name && p.id && p.name !== p.id ? ` <small>(${escapeHtml(p.id)})</small>` : ''}</span>`
+            + `<button title="Remover este ponto">✕</button>`;
+        row.querySelector('.np-nome').addEventListener('click', () => irParaPonto(p));
+        row.querySelector('button').addEventListener('click', () => removerPontoNovo(p));
+        cont.appendChild(row);
+    });
+}
+
+// =============================================================
+//  Pesquisa de pontos (nome atual ou o nome que veio no arquivo)
+// =============================================================
+let destaque = null;      // { p }: ponto encontrado, destacado no desenho
+let destaqueTimer = null;
+let ultimosAchados = [];
+// Compara sem maiúsculas/minúsculas, espaços, hífens e sublinhados ("gfa 01" acha "GFA-01").
+function normBusca(s) { return String(s || '').toUpperCase().replace(/[\s\-_]/g, ''); }
+function buscarPontos(q) {
+    const t = normBusca(q);
+    if (!t) return [];
+    const achados = [];
+    points.forEach(p => {
+        if (p.deleted) return;
+        let nota = null; // 0 = igual, 1 = começa com, 2 = contém
+        [p.name, p.id].forEach(nome => {
+            const s = normBusca(nome); if (!s) return;
+            const r = s === t ? 0 : s.startsWith(t) ? 1 : s.includes(t) ? 2 : null;
+            if (r != null && (nota == null || r < nota)) nota = r;
+        });
+        if (nota != null) achados.push({ p, nota });
+    });
+    const ordem = new Intl.Collator('pt-BR', { numeric: true });
+    achados.sort((a, b) => a.nota - b.nota || ordem.compare(a.p.name || a.p.id, b.p.name || b.p.id));
+    return achados.map(a => a.p);
+}
+function atualizarBusca() {
+    const q = document.getElementById('busca-input').value;
+    const cont = document.getElementById('busca-resultados');
+    ultimosAchados = buscarPontos(q);
+    if (!q.trim()) { cont.innerHTML = ''; return; }
+    if (!ultimosAchados.length) { cont.innerHTML = '<small class="busca-total">Nenhum ponto encontrado.</small>'; return; }
+    const LIMITE = 60, n = ultimosAchados.length;
+    cont.innerHTML = `<small class="busca-total">${n} ponto${n > 1 ? 's' : ''}${n > LIMITE ? ` — mostrando ${LIMITE}` : ''}${n > 1 ? ' · clique para ver' : ' · Enter para ver'}</small>`;
+    ultimosAchados.slice(0, LIMITE).forEach(p => {
+        const item = document.createElement('div');
+        item.className = 'busca-item';
+        const cor = p.lineIndex != null ? lines[p.lineIndex].color : CAT_COLOR[p.cat];
+        item.innerHTML = `<span class="cat-bola" style="background:${cor}"></span>`
+            + `<span class="busca-nome"><b>${escapeHtml(p.name || p.id || '(sem nome)')}</b>`
+            + `${p.name && p.id && p.name !== p.id ? ` <small>original: ${escapeHtml(p.id)}</small>` : ''}</span>`
+            + `<small class="busca-onde">${p.lineIndex != null ? 'Linha ' + escapeHtml(lines[p.lineIndex].letra) : escapeHtml(CAT_LABEL[p.cat])}</small>`;
+        item.addEventListener('click', () => irParaPonto(p));
+        cont.appendChild(item);
+    });
+}
+// Centraliza o ponto na tela (aproximando até os nomes aparecerem) e o destaca.
+function irParaPonto(p) {
+    if (!enabledCats.has(p.cat)) { enabledCats.add(p.cat); montarFiltroCategorias(); }
+    if (isFinite(labelThreshold)) view.scale = Math.max(view.scale, labelThreshold * 1.4);
+    view.ox = canvas.width / 2 - worldX(p) * view.scale;
+    view.oy = canvas.height / 2 - worldY(p) * view.scale;
+    destaque = { p };
+    clearTimeout(destaqueTimer);
+    destaqueTimer = setTimeout(() => { destaque = null; draw(); }, 8000);
+    mostrarInfoPonto(p);
+    draw();
+}
+function abrirBusca() {
+    fecharCards();
+    document.getElementById('card-busca').classList.remove('hidden');
+    const btn = document.querySelector('#toolbar .tool-btn[data-card="card-busca"]'); if (btn) btn.classList.add('ativo');
+    const inp = document.getElementById('busca-input'); inp.focus(); inp.select();
+}
 
 // --- Exclusão de pontos ---
 function alternarModoExcluir() {
@@ -1386,7 +1626,9 @@ function exportar() {
     lines.forEach(line => line.points.forEach(p => { novoNome[p.rowIndex] = p.name; }));
     const del = new Set(points.filter(p => p.deleted).map(p => p.rowIndex));
     // Devolve o arquivo no mesmo formato em que veio: só troca o nome, na coluna
-    // em que ele está. Arquivo sem coluna de nome ganha uma no início.
+    // em que ele está. Arquivo sem coluna de nome ganha uma no início. Os pontos
+    // adicionados no editor já estão no fim de originalRows, no mesmo formato.
+    points.forEach(p => { if (p.novo && novoNome[p.rowIndex] == null) novoNome[p.rowIndex] = p.id; });
     const out = originalRows
         .map((parts, idx) => {
             if (del.has(idx)) return null;
@@ -1714,14 +1956,15 @@ function ligarArrastePrancha() {
 // apontar para outro grampo, então é preciso saber que o arquivo mudou.
 function assinaturaCsv() {
     let h = 0x811c9dc5;
-    points.forEach(p => {
+    const doArquivo = points.filter(p => !p.novo); // pontos adicionados não fazem parte do arquivo
+    doArquivo.forEach(p => {
         const s = p.rowIndex + ':' + p.id;
         for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193); }
     });
-    return (h >>> 0).toString(36) + '.' + points.length;
+    return (h >>> 0).toString(36) + '.' + doArquivo.length;
 }
 function salvarAutosave() {
-    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ csv: assinaturaCsv(), flipH, nameAngle, nameSize, dividers, guide, del: points.filter(p => p.deleted).map(p => p.rowIndex), lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify({ csv: assinaturaCsv(), novos: novosSerializados(), flipH, nameAngle, nameSize, dividers, guide, del: points.filter(p => p.deleted).map(p => p.rowIndex), lines: lines.map(l => ({ letra: l.letra, color: l.color, inverted: !!l.inverted, pts: l.points.map(p => ({ r: p.rowIndex, c: p.customName || null })) })) })); } catch (e) {}
 }
 function restaurarAutosave() {
     let dados; try { dados = JSON.parse(localStorage.getItem(STORAGE_KEY)); } catch (e) { return false; }
@@ -1742,7 +1985,11 @@ function restaurarAutosave() {
     // Se o CSV foi atualizado desde o último acesso, os pontos salvos por número
     // de linha do arquivo apontam para outros grampos (linhas viravam uma teia).
     // A vista acima é independente do CSV e fica; as linhas são redetectadas.
-    if (dados.csv !== assinaturaCsv()) return true;
+    const mesmoCsv = dados.csv === assinaturaCsv();
+    // Pontos adicionados aqui têm coordenadas próprias e voltam sempre. Se o
+    // arquivo mudou e já traz um deles (mesma posição), o adicionado sai.
+    if (Array.isArray(dados.novos)) sincronizarNovos(mesmoCsv ? dados.novos : dados.novos.filter(o => !jaNoArquivo(o)));
+    if (!mesmoCsv) return true;
     if (Array.isArray(dados.del)) { const ds = new Set(dados.del); points.forEach(p => { if (ds.has(p.rowIndex)) p.deleted = true; }); }
     const byRow = {}; points.forEach(p => { byRow[p.rowIndex] = p; });
     lines = dados.lines.map((l, li) => {
@@ -1927,6 +2174,8 @@ window.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') fecharConferenciaColunas();
         return;
     }
+    // Ctrl+F abre a pesquisa de pontos (no lugar da busca do navegador, que não acha nada no desenho).
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'f' && points.length) { e.preventDefault(); abrirBusca(); return; }
     const ajudaModal = document.getElementById('ajuda-modal');
     if (e.key === 'Escape' && !ajudaModal.classList.contains('hidden')) { ajudaModal.classList.add('hidden'); return; }
     const edModal = document.getElementById('editar-modal');
@@ -1939,6 +2188,8 @@ window.addEventListener('keydown', (e) => {
         else if (e.key === 'Escape') { e.preventDefault(); fecharMiniCard(); }
         return;
     }
+    // Digitando num campo (nome, coordenadas, pesquisa...): espaço e Ctrl+Z são do texto.
+    if (/^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName)) return;
     // Concluir a divisória / o eixo-guia em construção com Enter.
     if (addingDivider && e.key === 'Enter') { e.preventDefault(); finalizarDivisoria(); return; }
     if (addingGuide && e.key === 'Enter') { e.preventDefault(); finalizarGuia(); return; }
@@ -1983,10 +2234,25 @@ document.querySelectorAll('#toolbar .tool-btn[data-card]').forEach(btn => {
         const card = document.getElementById(btn.dataset.card);
         const abrir = card.classList.contains('hidden');
         fecharCards();
-        if (abrir) { card.classList.remove('hidden'); btn.classList.add('ativo'); }
+        if (abrir) {
+            card.classList.remove('hidden'); btn.classList.add('ativo');
+            const foco = card.querySelector('[data-foco]'); if (foco) { foco.focus(); if (foco.select) foco.select(); }
+        }
     });
 });
 document.querySelectorAll('.tool-card-x').forEach(x => x.addEventListener('click', fecharCards));
+
+// Pesquisa de pontos
+document.getElementById('busca-input').addEventListener('input', atualizarBusca);
+document.getElementById('busca-input').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && ultimosAchados.length) { e.preventDefault(); irParaPonto(ultimosAchados[0]); }
+});
+// Adicionar pontos
+document.getElementById('btn-np-adicionar').addEventListener('click', adicionarPontoDoFormulario);
+['np-nome', 'np-e', 'np-n', 'np-z'].forEach(id => document.getElementById(id).addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); adicionarPontoDoFormulario(); }
+}));
+document.getElementById('btn-np-colar').addEventListener('click', adicionarPontosColados);
 
 // Modo visualização <-> edição
 const editarModal = document.getElementById('editar-modal');
